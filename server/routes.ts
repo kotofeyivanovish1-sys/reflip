@@ -220,7 +220,7 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text. Keep e
       } catch {}
 
       const message = await client.messages.create({
-        model: "claude_sonnet_4_6",
+        model: "claude-sonnet-4-6",
         max_tokens: 2500,
         messages: [{ role: "user", content: contentParts }],
       });
@@ -268,7 +268,7 @@ Respond in JSON format:
 }`;
 
       const message = await client.messages.create({
-        model: "claude_sonnet_4_6",
+        model: "claude-sonnet-4-6",
         max_tokens: 1200,
         messages: [{ role: "user", content: prompt }],
       });
@@ -345,7 +345,7 @@ Respond in JSON:
 }`;
 
       const message = await client.messages.create({
-        model: "claude_sonnet_4_6",
+        model: "claude-sonnet-4-6",
         max_tokens: 1200,
         messages: [{ role: "user", content: prompt }],
       });
@@ -385,7 +385,7 @@ Respond in JSON:
       const mediaType = (req.file.mimetype || "image/jpeg") as "image/jpeg" | "image/png" | "image/webp";
 
       const message = await client.messages.create({
-        model: "claude_sonnet_4_6",
+        model: "claude-sonnet-4-6",
         max_tokens: 1200,
         messages: [{
           role: "user",
@@ -472,7 +472,7 @@ Respond in JSON:
 }`;
 
       const message = await client.messages.create({
-        model: "claude_sonnet_4_6",
+        model: "claude-sonnet-4-6",
         max_tokens: 800,
         messages: [{ role: "user", content: prompt }],
       });
@@ -533,7 +533,7 @@ Respond in JSON:
 }`;
 
       const message = await client.messages.create({
-        model: "claude_sonnet_4_6",
+        model: "claude-sonnet-4-6",
         max_tokens: 1000,
         messages: [{ role: "user", content: prompt }],
       });
