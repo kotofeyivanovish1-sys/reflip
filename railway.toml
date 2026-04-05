@@ -1,0 +1,11 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm install && npm run build"
+
+[deploy]
+startCommand = "node dist/index.cjs"
+healthcheckPath = "/api/stats/dashboard"
+restartPolicyType = "ON_FAILURE"
+
+[service]
+internalPort = 5000
