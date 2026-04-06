@@ -84,6 +84,34 @@ try { sqlite.exec(`ALTER TABLE bags ADD COLUMN user_id INTEGER`); } catch {}
 try { sqlite.exec(`UPDATE listings SET user_id = 1 WHERE user_id IS NULL`); } catch {}
 try { sqlite.exec(`UPDATE scan_results SET user_id = 1 WHERE user_id IS NULL`); } catch {}
 
+// Map raw SQLite snake_case rows to camelCase Listing objects
+function mapRow(row: any): Listing {
+  if (!row) return row;
+  return {
+    id: row.id,
+    userId: row.user_id ?? row.userId,
+    title: row.title,
+    description: row.description,
+    brand: row.brand,
+    size: row.size,
+    condition: row.condition,
+    category: row.category,
+    imageUrl: row.image_url ?? row.imageUrl,
+    costPrice: row.cost_price ?? row.costPrice ?? 0,
+    status: row.status,
+    platform: row.platform,
+    listedPrice: row.listed_price ?? row.listedPrice ?? null,
+    soldPrice: row.sold_price ?? row.soldPrice ?? null,
+    soldAt: row.sold_at ?? row.soldAt ?? null,
+    createdAt: row.created_at ?? row.createdAt,
+    aiTexts: row.ai_texts ?? row.aiTexts ?? null,
+    priceSuggestions: row.price_suggestions ?? row.priceSuggestions ?? null,
+    scanData: row.scan_data ?? row.scanData ?? null,
+    notes: row.notes ?? null,
+    bagNumber: row.bag_number ?? row.bagNumber ?? null,
+  } as Listing;
+}
+
 export interface IStorage {
   // Users
   createUser(email: string, password: string, name?: string): Promise<Omit<User, 'passwordHash'>>;
@@ -133,14 +161,14 @@ class SQLiteStorage implements IStorage {
   }
 
   getBags(userId: number): { bagNumber: number; item?: Listing }[] {
-    const userListings = (sqlite.prepare(`SELECT * FROM listings WHERE user_id = ? AND bag_number IS NOT NULL ORDER BY bag_number ASC`).all(userId) as Listing[]);
+    const userListings = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ? AND bag_number IS NOT NULL ORDER BY bag_number ASC`).all(userId).map(mapRow);
     return userListings.map(l => ({ bagNumber: l.bagNumber!, item: l }));
   }
 
   getBag(userId: number, bagNumber: number): { bagNumber: number; item?: Listing } | undefined {
-    const item = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ? AND bag_number = ? LIMIT 1`).get(userId, bagNumber) as Listing | undefined;
-    if (!item) return undefined;
-    return { bagNumber, item };
+    const raw = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ? AND bag_number = ? LIMIT 1`).get(userId, bagNumber) as any;
+    if (!raw) return undefined;
+    return { bagNumber, item: mapRow(raw) };
   }
 
   getNextBagNumber(): number {
@@ -164,11 +192,12 @@ class SQLiteStorage implements IStorage {
     if (status) { query += ` AND status = ?`; params.push(status); }
     if (platform) { query += ` AND platform = ?`; params.push(platform); }
     query += ` ORDER BY id DESC`;
-    return sqlite.prepare(query).all(...params) as Listing[];
+    return sqlite.prepare(query).all(...params).map(mapRow);
   }
 
   getListing(id: number, userId: number): Listing | undefined {
-    return sqlite.prepare(`SELECT * FROM listings WHERE id = ? AND user_id = ?`).get(id, userId) as Listing | undefined;
+    const raw = sqlite.prepare(`SELECT * FROM listings WHERE id = ? AND user_id = ?`).get(id, userId) as any;
+    return raw ? mapRow(raw) : undefined;
   }
 
   createListing(data: InsertListing, userId: number): Listing {
@@ -190,8 +219,8 @@ class SQLiteStorage implements IStorage {
       data.listedPrice ?? null, data.soldPrice ?? null, data.soldAt ?? null,
       now, data.aiTexts ?? null, data.priceSuggestions ?? null, data.imageUrl ?? null,
       (data as any).scanData ?? null, (data as any).notes ?? null, bagNumber
-    ) as Listing;
-    return result;
+    ) as any;
+    return mapRow(result);
   }
 
   updateListing(id: number, data: Partial<InsertListing>, userId: number): Listing | undefined {
@@ -230,7 +259,7 @@ class SQLiteStorage implements IStorage {
   }
 
   getDashboardStats(userId: number) {
-    const all = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ?`).all(userId) as Listing[];
+    const all = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ?`).all(userId).map(mapRow);
     const sold = all.filter(l => l.status === "sold");
     const active = all.filter(l => l.status === "active");
 
@@ -276,7 +305,7 @@ class SQLiteStorage implements IStorage {
   }
 
   getPlatformAnalytics(userId: number) {
-    const all = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ?`).all(userId) as Listing[];
+    const all = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ?`).all(userId).map(mapRow);
     const sold = all.filter(l => l.status === "sold");
     const platforms = ["depop", "vinted", "poshmark", "ebay"];
     return platforms.map(p => {

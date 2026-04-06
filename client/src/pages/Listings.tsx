@@ -426,19 +426,15 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
             <p className="font-medium text-sm truncate max-w-[160px] sm:max-w-none">{listing.title}</p>
             <span className={`badge-${status} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{status}</span>
             <span className={`badge-${listing.platform} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{listing.platform}</span>
-            {bagNum && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
-                #{bagNum}
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
+                #{bagNum ?? "—"}
               </span>
-            )}
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            {bagNum && (
-              <span className="inline-flex items-center gap-0.5 font-semibold text-primary">
-                <Package size={10} /> Pkg #{bagNum}
+            <span className="inline-flex items-center gap-0.5 font-semibold text-primary">
+                <Package size={10} /> Bag #{bagNum ?? "—"}
               </span>
-            )}
-            <span>Cost: <span className="font-mono text-foreground">${listing.costPrice}</span></span>
+            <span>Cost: <span className="font-mono text-foreground">${listing.costPrice ?? "—"}</span></span>
             <span>Price: <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
             {listing.soldPrice != null && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+${(listing.soldPrice - listing.costPrice).toFixed(0)}</span>}
           </div>
