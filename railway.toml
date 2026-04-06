@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install && npm run build"
+buildCommand = "NODE_OPTIONS=--max-old-space-size=1536 npm install && NODE_OPTIONS=--max-old-space-size=1536 npm run build"
 
 [deploy]
 startCommand = "node dist/index.cjs"
