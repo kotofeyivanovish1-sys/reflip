@@ -68,6 +68,9 @@ function safeParseJSON(text: string): any | null {
 }
 
 export function registerRoutes(httpServer: Server, app: Express) {
+  // === HEALTHCHECK (public — used by Railway) ===
+  app.get("/api/health", (_, res) => res.json({ ok: true }));
+
   // === AUTH ===
   app.post("/api/auth/register", async (req, res) => {
     const { email, password, name } = req.body;

@@ -4,7 +4,7 @@ buildCommand = "npm install && npm run build"
 
 [deploy]
 startCommand = "node dist/index.cjs"
-healthcheckPath = "/api/stats/dashboard"
+healthcheckPath = "/api/health"
 restartPolicyType = "ON_FAILURE"
 
 [service]
