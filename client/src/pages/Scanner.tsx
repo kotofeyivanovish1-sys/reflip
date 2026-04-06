@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScanLine, Camera, CheckCircle, AlertCircle, ShoppingBag, Copy, CheckCheck, ExternalLink } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -267,7 +267,7 @@ export default function Scanner() {
       const formData = new FormData();
       formData.append("image", imageFile);
       if (size) formData.append("size", size);
-      const r = await fetch("/api/ai/scan-image", { method: "POST", body: formData });
+      const r = await fetch("/api/ai/scan-image", { method: "POST", body: formData, headers: getAuthHeaders() });
       const data = await r.json();
       setResult(data);
     } catch (e: any) {

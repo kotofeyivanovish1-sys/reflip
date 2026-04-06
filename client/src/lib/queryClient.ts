@@ -9,14 +9,26 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+/** Get auth headers from localStorage */
+export function getAuthHeaders(): Record<string, string> {
+  try {
+    const token = localStorage.getItem("reflip_token");
+    if (token) return { "Authorization": `Bearer ${token}` };
+  } catch {}
+  return {};
+}
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const headers: Record<string, string> = { ...getAuthHeaders() };
+  if (data) headers["Content-Type"] = "application/json";
+
   const res = await fetch(`${API_BASE}${url}`, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
   });
 
@@ -30,7 +42,8 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(`${API_BASE}${queryKey.join("/")}`);
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}${queryKey[0] as string}`, { headers });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

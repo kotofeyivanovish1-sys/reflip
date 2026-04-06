@@ -1,21 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Trash2, CheckCircle, Sparkles, ExternalLink, Copy, CheckCheck, Tag, Package, Pencil, QrCode, Download } from "lucide-react";
+import {
+  Plus, Trash2, CheckCircle, Sparkles, ExternalLink, Copy, CheckCheck,
+  Tag, Package, Pencil, QrCode, Download, MoreHorizontal
+} from "lucide-react";
 import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Listing } from "@shared/schema";
 
 const PLATFORMS = ["all", "depop", "vinted", "poshmark", "ebay"];
 const STATUSES = ["all", "pending", "active", "sold", "draft"];
+
+const PLATFORM_DOT: Record<string, string> = {
+  depop: "#ff4e4e", vinted: "#09b1ba", poshmark: "#e94365", ebay: "#e43c24",
+};
 
 export default function Listings() {
   const [platform, setPlatform] = useState("all");
@@ -55,28 +64,23 @@ export default function Listings() {
     mutationFn: (id: number) => apiRequest("PATCH", `/api/listings/${id}`, { status: "active" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-      toast({ title: "Листинг активирован!" });
+      toast({ title: "Listed!" });
     },
   });
 
-  const buildExportText = (listing: Listing, platform: string) => {
+  const buildExportText = (listing: Listing, plat: string) => {
     const prices = listing.priceSuggestions ? JSON.parse(listing.priceSuggestions) : {};
     const scanData = listing.scanData ? JSON.parse(listing.scanData) : null;
-    const platData = scanData?.platforms?.[platform];
-    const price = prices[platform] || listing.listedPrice || "";
+    const platData = scanData?.platforms?.[plat];
+    const price = prices[plat] || listing.listedPrice || "";
     const priceStr = platData ? `$${platData.minPrice}–$${platData.maxPrice}` : price ? `$${price}` : "";
-    const title = listing.title || "";
-    const desc = listing.description || "";
-    const cond = listing.condition || "good";
-    const sz = listing.size || "";
-    return `${title}${sz ? ` | Size: ${sz}` : ""}\n\n${desc}\n\nCondition: ${cond}\nPrice: ${priceStr}`.trim();
+    return `${listing.title}${listing.size ? ` | Size: ${listing.size}` : ""}\n\n${listing.description}\n\nCondition: ${listing.condition}\nPrice: ${priceStr}`.trim();
   };
 
-  const copyExport = (platform: string) => {
+  const copyExport = (plat: string) => {
     if (!crosslistListing) return;
-    const text = buildExportText(crosslistListing, platform);
-    navigator.clipboard.writeText(text);
-    setCopiedPlat(platform);
+    navigator.clipboard.writeText(buildExportText(crosslistListing, plat));
+    setCopiedPlat(plat);
     setTimeout(() => setCopiedPlat(null), 2000);
   };
 
@@ -107,10 +111,8 @@ export default function Listings() {
       setMarkSoldId(null);
       setSoldPrice("");
       toast({
-        title: bagNum ? `✅ Sold! Go grab Bag #${bagNum}` : "✅ Marked as sold!",
-        description: bagNum
-          ? `Pack it up — show QR for Bag #${bagNum} at USPS to print label`
-          : "Stats updated.",
+        title: bagNum ? `✅ Sold! Grab Bag #${bagNum}` : "✅ Marked as sold!",
+        description: bagNum ? `Show QR for Bag #${bagNum} at USPS` : "Stats updated.",
       });
     },
   });
@@ -121,18 +123,15 @@ export default function Listings() {
     setSuggestions(null);
     try {
       const r = await apiRequest("POST", "/api/ai/suggest", { listingId: id });
-      const data = await r.json();
-      setSuggestions(data);
-    } catch (e) {
+      setSuggestions(await r.json());
+    } catch {
       toast({ title: "Error", description: "Could not get AI suggestions", variant: "destructive" });
-    } finally {
-      setSuggestLoading(false);
-    }
+    } finally { setSuggestLoading(false); }
   };
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
+      <header className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
         <div className="flex items-center gap-3">
           <SidebarTrigger />
           <div>
@@ -140,112 +139,87 @@ export default function Listings() {
             <p className="text-xs text-muted-foreground">{listings.length} items</p>
           </div>
         </div>
-        <Button size="sm" asChild data-testid="new-listing-btn">
-          <Link href="/listings/new"><Plus size={14} className="mr-1" /> New Listing</Link>
+        <Button size="sm" asChild className="rounded-xl gap-1.5">
+          <Link href="/listings/new"><Plus size={14} /> New</Link>
         </Button>
       </header>
 
-      <div className="px-6 py-3 border-b border-border flex flex-wrap gap-2">
-        <div className="flex gap-1">
-          {STATUSES.map(s => (
-            <button key={s} onClick={() => setStatus(s)} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${status === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`} data-testid={`filter-status-${s}`}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1 ml-auto">
-          {PLATFORMS.map(p => (
-            <button key={p} onClick={() => setPlatform(p)} className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${platform === p ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`} data-testid={`filter-platform-${p}`}>
-              {p.charAt(0).toUpperCase() + p.slice(1)}
-            </button>
-          ))}
+      {/* Filter bar — scrollable on mobile */}
+      <div className="px-4 sm:px-6 py-3 border-b border-border/60 overflow-x-auto">
+        <div className="flex gap-2 min-w-max">
+          {/* Status filters */}
+          <div className="flex gap-1 items-center">
+            {STATUSES.map(s => (
+              <button key={s} onClick={() => setStatus(s)}
+                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap ${
+                  status === s
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="w-px bg-border/60 mx-1" />
+
+          {/* Platform filters */}
+          <div className="flex gap-1 items-center">
+            {PLATFORMS.map(p => (
+              <button key={p} onClick={() => setPlatform(p)}
+                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  platform === p
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}>
+                {p !== "all" && (
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PLATFORM_DOT[p] }} />
+                )}
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto px-6 py-5">
+      <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
         {isLoading ? (
-          <div className="space-y-2">{Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-16 w-full skeleton" />)}</div>
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full skeleton rounded-2xl" />)}
+          </div>
         ) : listings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Package size={40} className="text-muted-foreground/40 mb-3" />
-            <p className="font-medium text-sm mb-1">No listings found</p>
-            <p className="text-xs text-muted-foreground mb-4">Try adjusting filters or add a new listing</p>
-            <Button size="sm" asChild><Link href="/listings/new"><Plus size={13} className="mr-1" /> Add first item</Link></Button>
+            <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 float"
+              style={{ background: "linear-gradient(135deg, hsl(250 80% 65% / 0.2), hsl(195 80% 60% / 0.2))" }}>
+              <Package size={28} className="text-muted-foreground/50" />
+            </div>
+            <p className="font-medium text-sm mb-1">No listings yet</p>
+            <p className="text-xs text-muted-foreground mb-5">Add your first item to get started</p>
+            <Button size="sm" asChild className="gap-1.5 rounded-xl">
+              <Link href="/listings/new"><Plus size={13} /> Add first item</Link>
+            </Button>
           </div>
         ) : (
-          <div className="space-y-2" data-testid="listings-list">
+          <div className="space-y-2">
             {listings.map((listing: Listing) => (
-              <Card key={listing.id} className="hover:shadow-sm transition-shadow" data-testid={`listing-card-${listing.id}`}>
-                <CardContent className="py-3 px-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <p className="font-medium text-sm truncate">{listing.title}</p>
-                        <span className={`badge-${listing.status} text-[10px] font-semibold px-2 py-0.5 rounded-full`}>{listing.status}</span>
-                        <span className={`badge-${listing.platform} text-[10px] font-semibold px-2 py-0.5 rounded-full`}>{listing.platform}</span>
-                        {(listing as any).bagNumber && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                            <Package size={9} /> #{(listing as any).bagNumber}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span>Cost: <span className="font-mono text-foreground">${listing.costPrice}</span></span>
-                        {listing.listedPrice && <span>Listed: <span className="font-mono text-foreground">${listing.listedPrice}</span></span>}
-                        {listing.soldPrice && <span>Sold: <span className="font-mono text-emerald-600 dark:text-emerald-400">${listing.soldPrice}</span></span>}
-                        {listing.soldPrice && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+${(listing.soldPrice - listing.costPrice).toFixed(0)} profit</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {listing.status === "pending" && (
-                        <>
-                          <Button variant="ghost" size="sm" className="text-xs h-7 gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20" onClick={() => activateMutation.mutate(listing.id)} data-testid={`activate-${listing.id}`}>
-                            <Tag size={12} /> List it
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-xs h-7 gap-1" onClick={() => setCrosslistListing(listing)} data-testid={`crosslist-${listing.id}`}>
-                            <ExternalLink size={12} /> Export
-                          </Button>
-                        </>
-                      )}
-                      {listing.status === "active" && (
-                        <>
-                          <Button variant="ghost" size="sm" className="text-xs h-7 gap-1 text-muted-foreground" onClick={() => navigate(`/listings/${listing.id}/edit`)} data-testid={`edit-${listing.id}`}>
-                            <Pencil size={12} /> Edit
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-xs h-7 gap-1" onClick={() => getAISuggestions(listing.id)} data-testid={`ai-suggest-${listing.id}`}>
-                            <Sparkles size={12} /> AI
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-xs h-7 gap-1" onClick={() => setCrosslistListing(listing)} data-testid={`crosslist-active-${listing.id}`}>
-                            <ExternalLink size={12} /> Export
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-xs h-7 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => setMarkSoldId(listing.id)} data-testid={`mark-sold-${listing.id}`}>
-                            <CheckCircle size={12} /> Sold
-                          </Button>
-                        </>
-                      )}
-                      {listing.status === "pending" && (
-                        <Button variant="ghost" size="sm" className="text-xs h-7 gap-1 text-muted-foreground" onClick={() => navigate(`/listings/${listing.id}/edit`)} data-testid={`edit-pending-${listing.id}`}>
-                          <Pencil size={12} /> Edit
-                        </Button>
-                      )}
-                      {listing.status === "sold" && (listing as any).bagNumber && (
-                        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-emerald-600 hover:text-emerald-700" onClick={() => openQR((listing as any).bagNumber)} data-testid={`qr-${listing.id}`}>
-                          <QrCode size={12} /> USPS
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => deleteMutation.mutate(listing.id)} data-testid={`delete-${listing.id}`}>
-                        <Trash2 size={13} />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <ListingRow
+                key={listing.id}
+                listing={listing}
+                onMarkSold={() => setMarkSoldId(listing.id)}
+                onActivate={() => activateMutation.mutate(listing.id)}
+                onEdit={() => navigate(`/listings/${listing.id}/edit`)}
+                onDelete={() => deleteMutation.mutate(listing.id)}
+                onAI={() => getAISuggestions(listing.id)}
+                onExport={() => setCrosslistListing(listing)}
+                onQR={() => openQR((listing as any).bagNumber)}
+              />
             ))}
           </div>
         )}
       </main>
 
-      {/* Mark Sold Dialog — asks for NET price after all fees */}
+      {/* ── MARK SOLD DIALOG ── */}
       <Dialog open={markSoldId !== null} onOpenChange={() => { setMarkSoldId(null); setSoldPrice(""); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -255,15 +229,14 @@ export default function Listings() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Show the listing being sold */}
             {markSoldId && (() => {
               const l = listings.find((x: any) => x.id === markSoldId);
               const platFee = l?.platform === "vinted" ? 0 : l?.platform === "poshmark" ? 0.20 : 0.13;
               const estNet = l?.listedPrice ? (l.listedPrice * (1 - platFee)).toFixed(0) : null;
               return l ? (
-                <div className="bg-muted/40 rounded-xl p-3 space-y-2">
+                <div className="bg-muted/40 rounded-xl p-3 space-y-1">
                   <p className="text-sm font-semibold">{l.title}</p>
-                  <div className="flex gap-3 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                     <span>Listed: <span className="font-mono text-foreground">${l.listedPrice}</span></span>
                     <span>Cost: <span className="font-mono text-foreground">${l.costPrice}</span></span>
                     {estNet && <span>Est. net: <span className="font-mono text-emerald-500">${estNet}</span></span>}
@@ -273,25 +246,18 @@ export default function Listings() {
             })()}
 
             <div className="space-y-1.5">
-              <Label htmlFor="sold-price" className="text-sm font-medium">
-                How much did you receive? ($)
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Enter what you actually received <strong>after all platform fees</strong>. This goes into your profit stats.
-              </p>
+              <Label className="text-sm font-medium">How much did you receive? ($)</Label>
+              <p className="text-xs text-muted-foreground">Enter what you actually received after all platform fees.</p>
               <Input
-                id="sold-price"
                 type="number"
                 value={soldPrice}
                 onChange={e => setSoldPrice(e.target.value)}
                 placeholder="e.g. 39"
-                data-testid="sold-price-input"
                 autoFocus
                 className="rounded-xl font-mono text-base h-11"
               />
             </div>
 
-            {/* Live profit preview */}
             {soldPrice && markSoldId && (() => {
               const l = listings.find((x: any) => x.id === markSoldId);
               const net = Number(soldPrice);
@@ -302,7 +268,7 @@ export default function Listings() {
                   <p className={`text-xl font-bold font-mono ${profit >= 0 ? "text-emerald-500" : "text-red-400"}`}>
                     {profit >= 0 ? "+" : ""}{profit.toFixed(0)} profit
                   </p>
-                  {roi && <p className="text-xs text-muted-foreground mt-0.5">{roi}% ROI on this item</p>}
+                  {roi && <p className="text-xs text-muted-foreground mt-0.5">{roi}% ROI</p>}
                 </div>
               ) : null;
             })()}
@@ -312,24 +278,22 @@ export default function Listings() {
             <Button
               onClick={() => markSoldMutation.mutate({ id: markSoldId!, price: Number(soldPrice) })}
               disabled={!soldPrice || markSoldMutation.isPending}
-              className="gap-2"
               style={{ background: "linear-gradient(135deg, hsl(150 65% 40%), hsl(195 80% 45%))" }}
-              data-testid="confirm-sold-btn"
             >
-              <CheckCircle size={13} />
+              <CheckCircle size={13} className="mr-1.5" />
               {markSoldMutation.isPending ? "Saving..." : "Confirm Sale"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* AI Suggestions Dialog */}
+      {/* ── AI SUGGESTIONS DIALOG ── */}
       <Dialog open={suggestId !== null} onOpenChange={() => { setSuggestId(null); setSuggestions(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={16} className="text-amber-500" /> AI Suggestions</DialogTitle></DialogHeader>
           {suggestLoading ? (
             <div className="space-y-3 py-2">
-              {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-12 skeleton" />)}
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 skeleton" />)}
               <p className="text-xs text-muted-foreground text-center">Analyzing your listing...</p>
             </div>
           ) : suggestions ? (
@@ -355,7 +319,7 @@ export default function Listings() {
         </DialogContent>
       </Dialog>
 
-      {/* QR Code Dialog */}
+      {/* ── QR CODE DIALOG ── */}
       <Dialog open={!!qrData || qrLoading} onOpenChange={() => setQrData(null)}>
         <DialogContent className="max-w-xs">
           <DialogHeader>
@@ -383,13 +347,13 @@ export default function Listings() {
         </DialogContent>
       </Dialog>
 
-      {/* Crosslist Export Dialog */}
+      {/* ── CROSSLIST EXPORT DIALOG ── */}
       <Dialog open={!!crosslistListing} onOpenChange={() => { setCrosslistListing(null); setCopiedPlat(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ExternalLink size={15} className="text-primary" />
-              Экспорт в Crosslist / Vendoo
+              Export to Crosslist / Vendoo
             </DialogTitle>
           </DialogHeader>
           {crosslistListing && (
@@ -398,7 +362,7 @@ export default function Listings() {
                 <p className="text-sm font-semibold">{crosslistListing.title}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{crosslistListing.brand} · Size: {crosslistListing.size} · {crosslistListing.condition}</p>
               </div>
-              <p className="text-xs text-muted-foreground">Копируй текст для нужной площадки, затем вставь в Crosslist или Vendoo.</p>
+              <p className="text-xs text-muted-foreground">Copy text for each platform, then paste into Crosslist or Vendoo.</p>
               {["depop", "vinted", "poshmark", "ebay"].map(plat => {
                 const prices = crosslistListing.priceSuggestions ? JSON.parse(crosslistListing.priceSuggestions) : {};
                 const price = prices[plat];
@@ -409,7 +373,7 @@ export default function Listings() {
                         <span className={`badge-${plat} text-[10px] font-bold px-2 py-0.5 rounded-full uppercase`}>{plat}</span>
                         {price && <span className="text-xs font-mono font-semibold">${price}</span>}
                       </div>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 gap-1" onClick={() => copyExport(plat)} data-testid={`copy-export-${plat}`}>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 gap-1" onClick={() => copyExport(plat)}>
                         {copiedPlat === plat ? <CheckCheck size={13} className="text-emerald-500" /> : <Copy size={13} />}
                         <span className="text-xs">{copiedPlat === plat ? "Copied!" : "Copy"}</span>
                       </Button>
@@ -433,16 +397,116 @@ export default function Listings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }
 
-function Package({ size, className }: any) {
+// ── Listing Row — responsive action buttons ──
+interface RowProps {
+  listing: Listing;
+  onMarkSold: () => void;
+  onActivate: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAI: () => void;
+  onExport: () => void;
+  onQR: () => void;
+}
+
+function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR }: RowProps) {
+  const status = listing.status;
+  const bagNum = (listing as any).bagNumber;
+
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={className}>
-      <path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
-      <path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>
-    </svg>
+    <div className="glass-card rounded-2xl px-4 py-3 hover:shadow-md transition-all duration-200">
+      <div className="flex items-center gap-3">
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+            <p className="font-medium text-sm truncate max-w-[160px] sm:max-w-none">{listing.title}</p>
+            <span className={`badge-${status} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{status}</span>
+            <span className={`badge-${listing.platform} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{listing.platform}</span>
+            {bagNum && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
+                #{bagNum}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+            <span>Cost: <span className="font-mono text-foreground">${listing.costPrice}</span></span>
+            {listing.listedPrice && <span>Listed: <span className="font-mono text-foreground">${listing.listedPrice}</span></span>}
+            {listing.soldPrice && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+${(listing.soldPrice - listing.costPrice).toFixed(0)}</span>}
+          </div>
+        </div>
+
+        {/* Actions — responsive */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Primary CTA — always visible */}
+          {status === "active" && (
+            <Button
+              variant="ghost" size="sm"
+              className="text-xs h-8 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-semibold"
+              onClick={onMarkSold}
+            >
+              <CheckCircle size={13} />
+              <span className="hidden sm:inline">Sold</span>
+            </Button>
+          )}
+          {status === "pending" && (
+            <Button
+              variant="ghost" size="sm"
+              className="text-xs h-8 gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-semibold"
+              onClick={onActivate}
+            >
+              <Tag size={13} />
+              <span className="hidden sm:inline">List it</span>
+            </Button>
+          )}
+          {status === "sold" && bagNum && (
+            <Button
+              variant="ghost" size="sm"
+              className="text-xs h-8 gap-1 text-emerald-600 hover:text-emerald-700"
+              onClick={onQR}
+            >
+              <QrCode size={13} />
+              <span className="hidden sm:inline">USPS</span>
+            </Button>
+          )}
+
+          {/* Secondary actions — dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
+                <MoreHorizontal size={15} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {(status === "active" || status === "pending") && (
+                <DropdownMenuItem onClick={onEdit} className="gap-2 text-xs">
+                  <Pencil size={12} /> Edit listing
+                </DropdownMenuItem>
+              )}
+              {status === "active" && (
+                <DropdownMenuItem onClick={onAI} className="gap-2 text-xs">
+                  <Sparkles size={12} /> AI suggestions
+                </DropdownMenuItem>
+              )}
+              {(status === "active" || status === "pending") && (
+                <DropdownMenuItem onClick={onExport} className="gap-2 text-xs">
+                  <ExternalLink size={12} /> Export / Crosslist
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={onDelete}
+                className="gap-2 text-xs text-destructive focus:text-destructive"
+              >
+                <Trash2 size={12} /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </div>
   );
 }

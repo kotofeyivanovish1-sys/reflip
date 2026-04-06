@@ -10,7 +10,7 @@ import {
   ArrowRight, ShoppingBag, ChevronRight, Check,
   Package, DollarSign, Tag
 } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -69,7 +69,7 @@ export default function NewListing() {
       const formData = new FormData();
       formData.append("description", description);
       images.forEach(img => formData.append("images", img.file));
-      const r = await fetch("/api/ai/quick-listing", { method: "POST", body: formData });
+      const r = await fetch("/api/ai/quick-listing", { method: "POST", body: formData, headers: getAuthHeaders() });
       const data = await r.json();
       if (data.error) throw new Error(data.error);
       if (!data.platforms || Object.keys(data.platforms).length === 0) throw new Error("No platform data returned");
