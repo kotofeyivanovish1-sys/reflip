@@ -433,9 +433,14 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
             )}
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+            {bagNum && (
+              <span className="inline-flex items-center gap-0.5 font-semibold text-primary">
+                <Package size={10} /> Pkg #{bagNum}
+              </span>
+            )}
             <span>Cost: <span className="font-mono text-foreground">${listing.costPrice}</span></span>
-            {listing.listedPrice && <span>Listed: <span className="font-mono text-foreground">${listing.listedPrice}</span></span>}
-            {listing.soldPrice && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+${(listing.soldPrice - listing.costPrice).toFixed(0)}</span>}
+            <span>Price: <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
+            {listing.soldPrice != null && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+${(listing.soldPrice - listing.costPrice).toFixed(0)}</span>}
           </div>
         </div>
 

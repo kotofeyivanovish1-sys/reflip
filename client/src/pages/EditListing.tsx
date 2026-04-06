@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Save, ArrowLeft, Package } from "lucide-react";
+import { Save, ArrowLeft, Package, Sparkles } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -50,6 +50,24 @@ export default function EditListing() {
       });
     }
   }, [listing]);
+
+  const [improving, setImproving] = useState(false);
+
+  const improveDescription = async () => {
+    if (!params.id) return;
+    setImproving(true);
+    try {
+      const r = await apiRequest("POST", `/api/listings/${params.id}/improve-description`);
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      setForm(f => ({ ...f, description: data.description }));
+      toast({ title: "Description improved!" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setImproving(false);
+    }
+  };
 
   const update = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
@@ -170,7 +188,19 @@ export default function EditListing() {
             </div>
 
             <div>
-              <Label className="text-xs mb-1.5 block text-muted-foreground">Description</Label>
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="text-xs text-muted-foreground">Description</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2.5 gap-1.5 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                  onClick={improveDescription}
+                  disabled={improving}
+                >
+                  <Sparkles size={12} />
+                  {improving ? "Improving..." : "Improve Description"}
+                </Button>
+              </div>
               <Textarea value={form.description} onChange={e => update("description", e.target.value)}
                 rows={4} className="rounded-xl resize-none text-sm" />
             </div>

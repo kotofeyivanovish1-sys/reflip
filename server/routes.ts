@@ -195,7 +195,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       contentParts.push({
         type: "text",
-        text: `You are a pro reseller. Analyze this item and generate listing content for 4 platforms.
+        text: `You are a pro reseller on Depop/Vinted. Analyze this item and generate listing content for 4 platforms.
 
 Seller notes: "${description || "see images"}"
 
@@ -207,13 +207,23 @@ PRICING RULES (be realistic, not optimistic):
 - Poshmark: seller nets 80% of list price
 - eBay: seller nets ~85% after fees
 
-DESCRIPTION STYLE:
-- Depop: casual Gen-Z tone, emojis, aesthetic keywords (clean girl/old money/Y2K/etc), outfit ideas, hashtags at end
-- Vinted: clean & simple, condition-first, no emojis
-- Poshmark: warm & aspirational, style tips, US market
-- eBay: factual, keyword-rich title, measurements if known
+DESCRIPTION STYLE (Depop/Vinted aesthetic — use for ALL platforms):
+Write in this exact structure:
+1. BRAND + item name + emoji (e.g. "ZARA beige utility jacket 🤍")
+2. Material/composition (e.g. "100% cotton, made in Turkey")
+3. Style/vibe — 2-3 aesthetic keywords (e.g. "Effortless minimal, clean girl, old money aesthetic ✨")
+4. Size + fit (e.g. "Size: XS/S — relaxed fit")
+5. Condition (e.g. "Condition: very good, like new, no flaws")
+6. Trending NOW line (e.g. "Trending NOW: neutral tones, clean minimal layering, Pinterest aesthetic")
+7. Styling tips — what to pair with (e.g. "Pairs with jeans, trousers, skirts, cargo pants")
+8. "Open to offers 📩"
+9. 5-8 hashtags at the end (#brand #itemtype #color #aesthetic #style)
 
-IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text. Keep each description under 300 characters.
+Use emojis sparingly but effectively: 🤍 ✨ 📩 💕
+Tone: brief, trendy, TikTok/Pinterest aesthetic. Write in English.
+Use REAL data from the item: actual brand, color, type, size, condition.
+
+IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
 
 {
   "title": "Brand Item Color Size",
@@ -224,12 +234,12 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text. Keep e
   "color": "color",
   "aesthetic": "aesthetic vibe",
   "platforms": {
-    "depop":    { "title": "short punchy title", "description": "full depop text with hashtags", "listPrice": 35, "netAfterFees": 30, "feeNote": "~13% fees", "marketNote": "similar items sell $X-$Y" },
-    "vinted":   { "title": "vinted title",       "description": "clean practical text",          "listPrice": 28, "netAfterFees": 28, "feeNote": "0% seller fees", "marketNote": "vinted range" },
-    "poshmark": { "title": "poshmark title",     "description": "warm aspirational text",        "listPrice": 40, "netAfterFees": 32, "feeNote": "20% fee", "marketNote": "poshmark range" },
-    "ebay":     { "title": "eBay SEO title",     "description": "factual description",           "listPrice": 32, "netAfterFees": 27, "feeNote": "~15% fees", "marketNote": "ebay sold range" }
+    "depop":    { "title": "short punchy title", "description": "full Depop/Vinted style description with hashtags", "listPrice": 35, "netAfterFees": 30, "feeNote": "~13% fees", "marketNote": "similar items sell $X-$Y" },
+    "vinted":   { "title": "vinted title",       "description": "full Depop/Vinted style description with hashtags", "listPrice": 28, "netAfterFees": 28, "feeNote": "0% seller fees", "marketNote": "vinted range" },
+    "poshmark": { "title": "poshmark title",     "description": "full Depop/Vinted style description with hashtags", "listPrice": 40, "netAfterFees": 32, "feeNote": "20% fee", "marketNote": "poshmark range" },
+    "ebay":     { "title": "eBay SEO title",     "description": "full Depop/Vinted style description with hashtags", "listPrice": 32, "netAfterFees": 27, "feeNote": "~15% fees", "marketNote": "ebay sold range" }
   },
-  "hashtags": ["#tag1", "#tag2"],
+  "hashtags": ["#brand", "#itemtype", "#color", "#aesthetic", "#style"],
   "profitabilityRating": "high",
   "tips": "one specific selling tip"
 }`
@@ -271,7 +281,19 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text. Keep e
     const { brand, size, condition, category, description, platforms } = req.body;
     try {
       const client = getAI();
-      const prompt = `You are an expert reseller assistant. Generate compelling listing texts for the following item to be sold on secondhand marketplaces. Make the texts optimized for SEO (include brand, size, condition, style keywords buyers actually search for). Be specific and authentic — avoid generic phrases.
+      const prompt = `You are a pro reseller on Depop/Vinted. Generate listing descriptions in this exact style:
+
+1. BRAND + item name + emoji (e.g. "ZARA beige utility jacket 🤍")
+2. Material/composition
+3. Style/vibe — 2-3 aesthetic keywords (e.g. "Effortless minimal, clean girl, old money aesthetic ✨")
+4. Size + fit
+5. Condition
+6. Trending NOW line
+7. Styling tips — what to pair with
+8. "Open to offers 📩"
+9. 5-8 hashtags (#brand #itemtype #color #aesthetic #style)
+
+Use emojis: 🤍 ✨ 📩 💕. Tone: brief, trendy, TikTok/Pinterest aesthetic. English only.
 
 Item details:
 - Brand: ${brand || "Unknown"}
@@ -280,11 +302,10 @@ Item details:
 - Condition: ${condition}
 - Notes: ${description}
 
-Generate listing texts for these platforms: ${(platforms || ["depop", "vinted"]).join(", ")}.
+Generate for platforms: ${(platforms || ["depop", "vinted"]).join(", ")}.
+Also suggest optimal pricing per platform.
 
-Also suggest optimal pricing for each platform based on current resale market knowledge.
-
-Respond in JSON format:
+Respond in JSON:
 {
   "texts": {
     "depop": "title|description",
@@ -294,8 +315,8 @@ Respond in JSON format:
     "depop": 45,
     "vinted": 38
   },
-  "hashtags": ["#vintage", "#levi", ...],
-  "tips": "brief tip for selling this item"
+  "hashtags": ["#brand", "#itemtype", "#color", "#aesthetic", "#style"],
+  "tips": "brief tip"
 }`;
 
       const message = await client.messages.create({
@@ -460,6 +481,58 @@ Respond in JSON:
       res.json(result);
     } catch (e: any) {
       if (req.file?.path) try { fs.unlinkSync(req.file.path); } catch {}
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === AI: IMPROVE DESCRIPTION ===
+  app.post("/api/listings/:id/improve-description", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const listing = storage.getListing(Number(req.params.id), userId);
+    if (!listing) return void res.status(404).json({ error: "Listing not found" });
+    try {
+      const client = getAI();
+      const prompt = `You are a pro reseller on Depop/Vinted. Improve and expand this existing description into the Depop/Vinted listing style.
+
+Existing description to improve:
+"${listing.description}"
+
+Item details:
+- Title: ${listing.title}
+- Brand: ${listing.brand || "Unknown"}
+- Category: ${listing.category || "Clothing"}
+- Size: ${listing.size || "Unknown"}
+- Condition: ${listing.condition}
+- Platform: ${listing.platform}
+
+Rewrite using this exact structure:
+1. BRAND + item name + emoji (e.g. "ZARA beige utility jacket 🤍")
+2. Material/composition (if known or infer from context)
+3. Style/vibe — 2-3 aesthetic keywords (e.g. "Effortless minimal, clean girl, old money aesthetic ✨")
+4. Size + fit
+5. Condition
+6. Trending NOW line
+7. Styling tips — what to pair with
+8. "Open to offers 📩"
+9. 5-8 hashtags (#brand #itemtype #color #aesthetic #style)
+
+Use emojis sparingly: 🤍 ✨ 📩 💕
+Tone: brief, trendy, TikTok/Pinterest aesthetic. English only.
+Keep the real details from the original description. Make it better, not different.
+
+Respond with ONLY the improved description text, no JSON, no markdown fences.`;
+
+      const message = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 800,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+      if (!text.trim()) return void res.status(500).json({ error: "AI returned empty response" });
+      res.json({ description: text.trim() });
+    } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
