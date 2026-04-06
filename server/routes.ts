@@ -182,12 +182,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const client = getAI();
       const contentParts: any[] = [];
 
+      const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp"];
       for (const file of files.slice(0, 4)) {
         try {
           const buf = fs.readFileSync(file.path);
+          // Normalize unsupported types (HEIC, HEIF, etc.) to jpeg
+          const mime = SUPPORTED_MIME.includes(file.mimetype) ? file.mimetype : "image/jpeg";
           contentParts.push({
             type: "image",
-            source: { type: "base64", media_type: file.mimetype as any, data: buf.toString("base64") }
+            source: { type: "base64", media_type: mime as any, data: buf.toString("base64") }
           });
           fs.unlinkSync(file.path);
         } catch {}
@@ -260,7 +263,7 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
 
       const message = await client.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 2500,
+        max_tokens: 4096,
         messages: [{ role: "user", content: contentParts }],
       });
 
