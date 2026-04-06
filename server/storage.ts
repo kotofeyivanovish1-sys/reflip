@@ -6,7 +6,9 @@ import { listings, scanResults, platformStats, users, bags } from "../shared/sch
 import type { InsertListing, Listing, InsertScanResult, ScanResult, InsertPlatformStat, PlatformStat, User, Bag } from "../shared/schema";
 import bcrypt from "bcryptjs";
 
-const sqlite = new Database("reflip.db");
+// Use DB_PATH env var for Railway Volume, fallback for local dev
+const dbPath = process.env.DB_PATH || "reflip.db";
+const sqlite = new Database(dbPath);
 const db = drizzle(sqlite, { schema });
 
 // Create tables (with user_id support from the start)
@@ -83,6 +85,18 @@ try { sqlite.exec(`ALTER TABLE bags ADD COLUMN user_id INTEGER`); } catch {}
 // This ensures the first person who registers gets all their existing data
 try { sqlite.exec(`UPDATE listings SET user_id = 1 WHERE user_id IS NULL`); } catch {}
 try { sqlite.exec(`UPDATE scan_results SET user_id = 1 WHERE user_id IS NULL`); } catch {}
+
+// Seed admin user — recreated automatically if DB is wiped
+try {
+  sqlite.prepare(
+    `INSERT OR IGNORE INTO users (email, password_hash, name, created_at)
+     VALUES (?, ?, ?, date('now'))`
+  ).run(
+    "stpnv.me@icloud.com",
+    "$2b$10$laaadRsI3T8b7djRGffhwu70xibwAAPsioa6kOBMGXvoJCQ7V6EOa",
+    "Admin"
+  );
+} catch {}
 
 // Map raw SQLite snake_case rows to camelCase Listing objects
 function mapRow(row: any): Listing {
