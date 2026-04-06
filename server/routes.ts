@@ -7,7 +7,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
+import sharp from "sharp";
 import { searchAllPlatforms } from "./marketSearch";
+
+// Resize image to max 1200px and compress as JPEG — keeps Anthropic request under limits
+async function prepareImage(filePath: string): Promise<{ data: string; mime: "image/jpeg" }> {
+  const buf = await sharp(filePath)
+    .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+  return { data: buf.toString("base64"), mime: "image/jpeg" };
+}
 
 const upload = multer({ dest: "/tmp/reflip-uploads/" });
 
@@ -182,18 +192,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const client = getAI();
       const contentParts: any[] = [];
 
-      const SUPPORTED_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp"];
       for (const file of files.slice(0, 4)) {
         try {
-          const buf = fs.readFileSync(file.path);
-          // Normalize unsupported types (HEIC, HEIF, etc.) to jpeg
-          const mime = SUPPORTED_MIME.includes(file.mimetype) ? file.mimetype : "image/jpeg";
+          const { data, mime } = await prepareImage(file.path);
           contentParts.push({
             type: "image",
-            source: { type: "base64", media_type: mime as any, data: buf.toString("base64") }
+            source: { type: "base64", media_type: mime, data }
           });
-          fs.unlinkSync(file.path);
         } catch {}
+        try { fs.unlinkSync(file.path); } catch {}
       }
 
       contentParts.push({
@@ -430,9 +437,8 @@ Respond in JSON:
     const size = req.body?.size || "Unknown";
     try {
       const client = getAI();
-      const imageBuffer = fs.readFileSync(req.file.path);
-      const base64Image = imageBuffer.toString("base64");
-      const mediaType = (req.file.mimetype || "image/jpeg") as "image/jpeg" | "image/png" | "image/webp";
+      const { data: base64Image, mime: mediaType } = await prepareImage(req.file.path);
+      try { fs.unlinkSync(req.file.path); } catch {}
 
       const message = await client.messages.create({
         model: "claude-sonnet-4-6",
