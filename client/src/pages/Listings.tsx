@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, CheckCircle, Sparkles, ExternalLink, Copy, CheckCheck,
-  Tag, Package, Pencil, QrCode, Download, MoreHorizontal
+  Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2
 } from "lucide-react";
 import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -39,7 +39,49 @@ export default function Listings() {
   const [copiedPlat, setCopiedPlat] = useState<string | null>(null);
   const [qrData, setQrData] = useState<{ bagNumber: number; qrDataUrl: string; label: string } | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [photoFetchId, setPhotoFetchId] = useState<number | null>(null);
+  const [poshmarkUrl, setPoshmarkUrl] = useState("");
+  const [photoFetching, setPhotoFetching] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importCost, setImportCost] = useState("");
+  const [importing, setImporting] = useState(false);
   const { toast } = useToast();
+
+  const fetchPhotos = async () => {
+    if (!photoFetchId || !poshmarkUrl.trim()) return;
+    setPhotoFetching(true);
+    try {
+      const r = await apiRequest("POST", `/api/listings/${photoFetchId}/fetch-poshmark-photos`, { url: poshmarkUrl });
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      toast({ title: `${data.images.length} photo(s) loaded!` });
+      setPhotoFetchId(null);
+      setPoshmarkUrl("");
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally { setPhotoFetching(false); }
+  };
+
+  const importFromPoshmark = async () => {
+    if (!importUrl.trim()) return;
+    setImporting(true);
+    try {
+      const r = await apiRequest("POST", "/api/poshmark/import", { url: importUrl, costPrice: Number(importCost) || 0 });
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bags"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/dashboard"] });
+      toast({ title: `Imported: ${data.title}`, description: `Bag #${data.bagNumber} assigned` });
+      setImportOpen(false);
+      setImportUrl("");
+      setImportCost("");
+    } catch (e: any) {
+      toast({ title: "Import failed", description: e.message, variant: "destructive" });
+    } finally { setImporting(false); }
+  };
 
   const openQR = async (bagNumber: number) => {
     setQrLoading(true);
@@ -139,9 +181,15 @@ export default function Listings() {
             <p className="text-xs text-muted-foreground">{listings.length} items</p>
           </div>
         </div>
-        <Button size="sm" asChild className="rounded-xl gap-1.5">
-          <Link href="/listings/new"><Plus size={14} /> New</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="rounded-xl gap-1.5 text-xs border-[#e94365]/30 text-[#e94365] hover:bg-[#e94365]/10"
+            onClick={() => setImportOpen(true)}>
+            <ImagePlus size={13} /> Poshmark
+          </Button>
+          <Button size="sm" asChild className="rounded-xl gap-1.5">
+            <Link href="/listings/new"><Plus size={14} /> New</Link>
+          </Button>
+        </div>
       </header>
 
       {/* Filter bar — scrollable on mobile */}
@@ -213,6 +261,7 @@ export default function Listings() {
                 onAI={() => getAISuggestions(listing.id)}
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
+                onFetchPhotos={() => { setPhotoFetchId(listing.id); setPoshmarkUrl(""); }}
               />
             ))}
           </div>
@@ -397,8 +446,101 @@ export default function Listings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── FETCH POSHMARK PHOTOS DIALOG ── */}
+      <Dialog open={photoFetchId !== null} onOpenChange={() => { setPhotoFetchId(null); setPoshmarkUrl(""); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImagePlus size={16} className="text-[#e94365]" />
+              Fetch Photos from Poshmark
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Paste the Poshmark listing URL to pull photos into this listing.
+            </p>
+            <Input
+              value={poshmarkUrl}
+              onChange={e => setPoshmarkUrl(e.target.value)}
+              placeholder="https://poshmark.com/listing/..."
+              className="rounded-xl text-sm"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPhotoFetchId(null); setPoshmarkUrl(""); }}>Cancel</Button>
+            <Button
+              onClick={fetchPhotos}
+              disabled={!poshmarkUrl.trim() || photoFetching}
+              style={{ background: "#e94365" }}
+              className="gap-1.5"
+            >
+              {photoFetching ? <><Loader2 size={13} className="animate-spin" /> Fetching...</> : <><ImagePlus size={13} /> Fetch Photos</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── IMPORT FROM POSHMARK DIALOG ── */}
+      <Dialog open={importOpen} onOpenChange={() => { setImportOpen(false); setImportUrl(""); setImportCost(""); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImagePlus size={16} className="text-[#e94365]" />
+              Import from Poshmark
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Paste a Poshmark listing URL — title, description, price, and photos will be imported automatically.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Poshmark URL</Label>
+              <Input
+                value={importUrl}
+                onChange={e => setImportUrl(e.target.value)}
+                placeholder="https://poshmark.com/listing/..."
+                className="rounded-xl text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Cost price ($)</Label>
+              <Input
+                type="number"
+                value={importCost}
+                onChange={e => setImportCost(e.target.value)}
+                placeholder="0"
+                className="rounded-xl font-mono text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setImportOpen(false); setImportUrl(""); setImportCost(""); }}>Cancel</Button>
+            <Button
+              onClick={importFromPoshmark}
+              disabled={!importUrl.trim() || importing}
+              style={{ background: "#e94365" }}
+              className="gap-1.5"
+            >
+              {importing ? <><Loader2 size={13} className="animate-spin" /> Importing...</> : "Import Listing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+// Helper: parse imageUrl field — supports JSON array or single URL
+function getListingImages(listing: Listing): string[] {
+  if (!listing.imageUrl) return [];
+  try {
+    const parsed = JSON.parse(listing.imageUrl);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+  return [listing.imageUrl];
 }
 
 // ── Listing Row — responsive action buttons ──
@@ -411,31 +553,46 @@ interface RowProps {
   onAI: () => void;
   onExport: () => void;
   onQR: () => void;
+  onFetchPhotos: () => void;
 }
 
-function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR }: RowProps) {
+function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos }: RowProps) {
   const status = listing.status;
   const bagNum = (listing as any).bagNumber;
+  const images = getListingImages(listing);
+  const thumb = images[0];
 
   return (
     <div className="glass-card rounded-2xl px-4 py-3 hover:shadow-md transition-all duration-200">
       <div className="flex items-center gap-3">
+        {/* Thumbnail */}
+        {thumb ? (
+          <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-muted/30">
+            <img src={thumb} alt="" className="w-full h-full object-cover" loading="lazy" />
+          </div>
+        ) : (
+          <button
+            onClick={onFetchPhotos}
+            className="w-12 h-12 rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex items-center justify-center text-muted-foreground/40 hover:border-[#e94365]/40 hover:text-[#e94365]/60 transition-colors"
+            title="Fetch photos from Poshmark"
+          >
+            <ImagePlus size={16} />
+          </button>
+        )}
+
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
             <p className="font-medium text-sm truncate max-w-[160px] sm:max-w-none">{listing.title}</p>
             <span className={`badge-${status} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{status}</span>
             <span className={`badge-${listing.platform} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{listing.platform}</span>
-            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
-                #{bagNum ?? "—"}
-              </span>
+            {listing.brand && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{listing.brand}</span>
+            )}
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            <span className="inline-flex items-center gap-0.5 font-semibold text-primary">
-                <Package size={10} /> Bag #{bagNum ?? "—"}
-              </span>
-            <span>Cost: <span className="font-mono text-foreground">${listing.costPrice ?? "—"}</span></span>
-            <span>Price: <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
+            <span>Cost <span className="font-mono text-foreground">${listing.costPrice ?? "—"}</span></span>
+            <span>Listed <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
             {listing.soldPrice != null && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+${(listing.soldPrice - listing.costPrice).toFixed(0)}</span>}
           </div>
         </div>
@@ -497,6 +654,9 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
                   <ExternalLink size={12} /> Export / Crosslist
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem onClick={onFetchPhotos} className="gap-2 text-xs">
+                <ImagePlus size={12} /> Fetch photos
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={onDelete}
