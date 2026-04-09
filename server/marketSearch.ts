@@ -277,6 +277,96 @@ function emptyMarketData(platform: string): MarketData {
   return { platform, listings: [], soldCount: 0, avgPrice: 0, minPrice: 0, maxPrice: 0, medianPrice: 0, sampleTitles: [] };
 }
 
+// Fetch a single Poshmark listing page — extracts photos, title, price, description, etc.
+export interface PoshmarkListingData {
+  title: string;
+  description: string;
+  price: number;
+  brand: string | null;
+  size: string | null;
+  condition: string | null;
+  category: string | null;
+  images: string[];  // full-res image URLs
+  url: string;
+}
+
+export async function fetchPoshmarkListing(listingUrl: string): Promise<PoshmarkListingData | null> {
+  try {
+    // Normalize URL — accept full URLs or just listing IDs
+    let url = listingUrl.trim();
+    if (!url.startsWith("http")) {
+      url = `https://poshmark.com/listing/${url}`;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      redirect: "follow",
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // Parse __NEXT_DATA__ JSON
+    const jsonMatch = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!jsonMatch) return null;
+
+    const data = JSON.parse(jsonMatch[1]);
+    const props = data?.props?.pageProps;
+
+    // Try different paths for the listing object
+    const listing = props?.listing || props?.data?.listing || props?.post || props?.data?.post || null;
+    if (!listing) return null;
+
+    // Extract images — Poshmark stores them in various fields
+    const images: string[] = [];
+    const pics = listing.pictures || listing.photos || listing.cover_shot_pictures || [];
+    for (const pic of pics) {
+      // Poshmark uses different image size URLs; prefer large
+      const imgUrl = pic.url_original || pic.url_full || pic.url_large || pic.url || pic;
+      if (typeof imgUrl === "string" && imgUrl.startsWith("http")) {
+        images.push(imgUrl);
+      }
+    }
+    // Also check cover_shot
+    if (listing.cover_shot?.url_original || listing.cover_shot?.url_full) {
+      const coverUrl = listing.cover_shot.url_original || listing.cover_shot.url_full;
+      if (!images.includes(coverUrl)) images.unshift(coverUrl);
+    }
+
+    // Fallback: try to find og:image meta tags if no images from JSON
+    if (images.length === 0) {
+      const ogRegex = /<meta\s+property="og:image"\s+content="([^"]+)"/g;
+      let ogMatch;
+      while ((ogMatch = ogRegex.exec(html)) !== null) {
+        if (ogMatch[1] && !images.includes(ogMatch[1])) images.push(ogMatch[1]);
+      }
+    }
+
+    return {
+      title: listing.title || listing.display_title || "",
+      description: listing.description || "",
+      price: parseFloat(listing.price_amount?.val || listing.original_price_amount?.val || listing.price || "0"),
+      brand: listing.brand?.name || listing.brand_name || listing.brand || null,
+      size: listing.size?.display || listing.size_display || listing.size || null,
+      condition: listing.condition || listing.inventory?.condition || null,
+      category: listing.category_v2?.display || listing.department?.display || listing.category || null,
+      images,
+      url,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 export async function searchAllPlatforms(query: string, size?: string): Promise<MarketData[]> {
   const [ebay, vinted, depop, poshmark] = await Promise.allSettled([
     searchEbay(query, size),

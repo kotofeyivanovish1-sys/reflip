@@ -7,8 +7,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import sharp from "sharp";
-import { searchAllPlatforms } from "./marketSearch";
+import { searchAllPlatforms, fetchPoshmarkListing } from "./marketSearch";
 
 // Resize image to max 1200px and compress as JPEG — keeps Anthropic request under limits
 async function prepareImage(filePath: string): Promise<{ data: string; mime: "image/jpeg" }> {
@@ -191,6 +192,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     try {
       const client = getAI();
       const contentParts: any[] = [];
+      const savedImageUrls: string[] = [];
+
+      // Ensure uploads directory exists
+      const uploadsDir = path.resolve(process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : ".", "uploads");
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
       for (const file of files.slice(0, 4)) {
         try {
@@ -199,6 +205,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
             type: "image",
             source: { type: "base64", media_type: mime, data }
           });
+
+          // Save image to uploads directory
+          const filename = `${crypto.randomUUID()}.jpg`;
+          fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(data, "base64"));
+          savedImageUrls.push(`/api/uploads/${filename}`);
         } catch {}
         try { fs.unlinkSync(file.path); } catch {}
       }
@@ -277,6 +288,8 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
       const text = message.content[0].type === "text" ? message.content[0].text : "";
       const parsed = safeParseJSON(text);
       if (!parsed) return void res.status(500).json({ error: "AI response parsing failed — please try again." });
+      // Attach saved image URLs so frontend can store them with the listing
+      if (savedImageUrls.length > 0) parsed._imageUrls = savedImageUrls;
       res.json(parsed);
     } catch (e: any) {
       for (const f of (req.files as any[]) || []) try { fs.unlinkSync(f.path); } catch {}
@@ -651,6 +664,74 @@ Respond in JSON:
       const _parsed = safeParseJSON(text);
       if (!_parsed) return void res.status(500).json({ error: "AI parsing failed" });
       res.json(_parsed);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === POSHMARK: FETCH LISTING DATA + PHOTOS ===
+  app.post("/api/poshmark/fetch", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const { url } = req.body;
+    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
+    try {
+      const data = await fetchPoshmarkListing(url);
+      if (!data) return void res.status(404).json({ error: "Could not fetch listing from Poshmark. Check the URL and try again." });
+      res.json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Fetch photos from Poshmark and attach to an existing listing
+  app.post("/api/listings/:id/fetch-poshmark-photos", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const listing = storage.getListing(Number(req.params.id), userId);
+    if (!listing) return void res.status(404).json({ error: "Listing not found" });
+    const { url } = req.body;
+    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
+    try {
+      const data = await fetchPoshmarkListing(url);
+      if (!data || data.images.length === 0) {
+        return void res.status(404).json({ error: "No photos found on this Poshmark listing" });
+      }
+      // Store images as JSON array in imageUrl field
+      const imageUrl = JSON.stringify(data.images);
+      const updated = storage.updateListing(Number(req.params.id), { imageUrl } as any, userId);
+      res.json({ images: data.images, listing: updated });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Import a full listing from Poshmark URL
+  app.post("/api/poshmark/import", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const { url, costPrice } = req.body;
+    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
+    try {
+      const data = await fetchPoshmarkListing(url);
+      if (!data) return void res.status(404).json({ error: "Could not fetch listing from Poshmark" });
+
+      const imageUrl = data.images.length > 0 ? JSON.stringify(data.images) : null;
+      const listing = storage.createListing({
+        title: data.title,
+        description: data.description,
+        brand: data.brand,
+        size: data.size,
+        condition: data.condition || "good",
+        category: data.category,
+        imageUrl,
+        costPrice: Number(costPrice) || 0,
+        listedPrice: data.price || null,
+        platform: "poshmark",
+        status: "active",
+      } as any, userId);
+
+      res.json(listing);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

@@ -99,6 +99,9 @@ export default function NewListing() {
         Object.fromEntries(Object.entries(platforms).map(([k, v]: any) => [k, `${v.title}|${v.description}`]))
       );
 
+      // Save image URLs if available (from uploaded photos)
+      const imageUrl = result._imageUrls?.length ? JSON.stringify(result._imageUrls) : null;
+
       const res = await apiRequest("POST", "/api/listings", {
         title: result.title || "Untitled",
         description: platforms[bestName]?.description || result.title || "—",
@@ -112,6 +115,7 @@ export default function NewListing() {
         status: "active",
         aiTexts,
         priceSuggestions,
+        imageUrl,
       });
       const saved = await res.json();
       setSavedBag(saved.bagNumber);
