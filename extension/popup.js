@@ -234,27 +234,60 @@ async function syncListings(listings, platform) {
       }
 
       if (match) {
-        // Link & update existing listing
+        // Link & update existing listing with platform data
         const updates = {};
 
+        // Always link the platform URL
         if (item.url && !match[platformUrlField]) {
           updates[platformUrlField] = item.url;
         }
+
+        // Update price if listing has none or is 0
         if (item.price && item.price > 0 && (!match.listedPrice || match.listedPrice === 0)) {
           updates.listedPrice = item.price;
         }
+
+        // Update description if listing has none or very short
+        if (item.description && item.description.length > 10 &&
+            (!match.description || match.description.length < 10)) {
+          updates.description = item.description;
+        }
+
+        // Update title if listing has none
+        if (item.title && item.title.length > 2 && (!match.title || match.title.length < 3)) {
+          updates.title = item.title;
+        }
+
+        // Update brand if listing has none
+        if (item.brand && !match.brand) {
+          updates.brand = item.brand;
+        }
+
+        // Update size if listing has none
+        if (item.size && !match.size) {
+          updates.size = item.size;
+        }
+
+        // Update condition if listing has none
+        if (item.condition && !match.condition) {
+          updates.condition = item.condition;
+        }
+
+        // Update images if listing has none or only thumbnails
         if (item.images && item.images.length > 0) {
           const existingImages = parseImages(match.imageUrl);
           if (existingImages.length === 0 || containsThumbnails(existingImages)) {
             updates.imageUrl = JSON.stringify(item.images);
           }
         }
+
+        // Update status if sold
         if (item.status === "sold" && match.status === "active") {
           updates.status = "sold";
         }
 
         if (Object.keys(updates).length > 0) {
-          await fetch(`${config.serverUrl}/api/listings/${match.id}`, {
+          const res = await fetch(`${config.serverUrl}/api/listings/${match.id}`, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -262,6 +295,14 @@ async function syncListings(listings, platform) {
             },
             body: JSON.stringify(updates),
           });
+          if (!res.ok) {
+            addLog(`Failed to update "${match.title?.slice(0, 25)}": ${res.status}`, "err");
+          } else {
+            const fields = Object.keys(updates).filter(k => k !== platformUrlField);
+            if (fields.length > 0) {
+              addLog(`Updated "${match.title?.slice(0, 25)}": ${fields.join(", ")}`, "ok");
+            }
+          }
           linked++;
         } else {
           updated++;
