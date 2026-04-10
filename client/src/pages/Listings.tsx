@@ -632,7 +632,7 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              {(status === "active" || status === "pending") && (
+              {(status === "active" || status === "pending" || status === "sold") && (
                 <DropdownMenuItem onClick={onEdit} className="gap-2 text-xs">
                   <Pencil size={12} /> Edit listing
                 </DropdownMenuItem>
