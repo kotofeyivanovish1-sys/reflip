@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e5;
+      font-size: 13px;
+    }
+    .header {
+      padding: 14px 16px;
+      background: linear-gradient(135deg, #6366f1, #06b6d4, #8b5cf6);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header h1 { font-size: 15px; font-weight: 600; color: white; }
+    .header small { font-size: 10px; color: rgba(255,255,255,0.7); display: block; }
+
+    .section { padding: 12px 16px; border-bottom: 1px solid #1a1a2e; }
+    .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 8px; }
+
+    .status { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.green { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #f59e0b; }
+
+    input {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #2a2a3e;
+      background: #12121f;
+      color: #e0e0e5;
+      font-size: 12px;
+      outline: none;
+    }
+    input:focus { border-color: #6366f1; }
+
+    .btn {
+      width: 100%;
+      padding: 9px;
+      border-radius: 8px;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; }
+    .btn-secondary { background: #1a1a2e; color: #e0e0e5; border: 1px solid #2a2a3e; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card {
+      background: #12121f;
+      border: 1px solid #1a1a2e;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+    .stat-card .value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat-card .label { font-size: 10px; color: #888; margin-top: 2px; }
+
+    .log {
+      max-height: 100px;
+      overflow-y: auto;
+      font-size: 11px;
+      color: #888;
+      background: #12121f;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .log p { padding: 2px 0; }
+    .log .ok { color: #22c55e; }
+    .log .err { color: #ef4444; }
+
+    #login-section, #main-section { display: none; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>ReFlip Sync</h1>
+      <small>Listing monitor & sync</small>
+    </div>
+  </div>
+
+  <!-- Login -->
+  <div id="login-section">
+    <div class="section">
+      <div class="section-title">Connect to ReFlip</div>
+      <input id="server-url" type="text" placeholder="Server URL (e.g. https://your-app.railway.app)" style="margin-bottom:6px">
+      <input id="email" type="email" placeholder="Email" style="margin-bottom:6px">
+      <input id="password" type="password" placeholder="Password">
+      <button class="btn btn-primary" id="login-btn">Connect</button>
+      <p id="login-error" style="color:#ef4444;font-size:11px;margin-top:6px;display:none"></p>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main-section">
+    <div class="section">
+      <div class="status">
+        <div class="dot green" id="status-dot"></div>
+        <span id="status-text">Connected</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Sync</div>
+      <p style="font-size:11px;color:#888;margin-bottom:8px">
+        Open your Depop or Poshmark closet/shop page, then click Sync.
+      </p>
+      <button class="btn btn-primary" id="sync-btn">Sync This Page</button>
+      <button class="btn btn-secondary" id="sync-all-btn" style="margin-top:6px">Sync All My Listings</button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Last Sync</div>
+      <div class="stats">
+        <div class="stat-card">
+          <div class="value" id="synced-count">0</div>
+          <div class="label">Synced</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="new-count">0</div>
+          <div class="label">New</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Activity Log</div>
+      <div class="log" id="log">
+        <p style="color:#555">No activity yet</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <button class="btn btn-secondary" id="disconnect-btn">Disconnect</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
