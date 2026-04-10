@@ -755,30 +755,41 @@ Respond in JSON:
     if (!url) return void res.status(400).json({ error: "Listing URL required" });
     try {
       let data;
+      const errors: string[] = [];
+
       if (url.includes("depop.com")) {
-        const d = await fetchDepopListing(url);
-        if (d && d.images && d.images.length > 0) data = d;
+        try {
+          const d = await fetchDepopListing(url);
+          if (d && d.images && d.images.length > 0) data = d;
+          else errors.push("Depop: listing found but no images extracted");
+        } catch (e: any) { errors.push(`Depop: ${e.message}`); }
       }
       if (!data && url.includes("poshmark.com")) {
-        const d = await fetchPoshmarkListing(url);
-        if (d && d.images && d.images.length > 0) data = d;
+        try {
+          const d = await fetchPoshmarkListing(url);
+          if (d && d.images && d.images.length > 0) data = d;
+          else errors.push("Poshmark: listing found but no images extracted");
+        } catch (e: any) { errors.push(`Poshmark: ${e.message}`); }
       }
-      // Generic fallback: try both scrapers if URL doesn't match known platforms
       if (!data && !url.includes("depop.com") && !url.includes("poshmark.com")) {
-        const d = await fetchPoshmarkListing(url);
-        if (d && d.images && d.images.length > 0) data = d;
+        errors.push("URL not recognized as Depop or Poshmark");
       }
 
       if (!data || data.images.length === 0) {
-        return void res.status(404).json({ error: "No photos found. Make sure the listing URL is correct and publicly accessible." });
+        const detail = errors.length > 0 ? ` (${errors.join("; ")})` : "";
+        console.error(`[fetch-photos] Failed for URL: ${url}${detail}`);
+        return void res.status(404).json({
+          error: `Could not fetch photos. The platform may be blocking requests from the server.${detail}`
+        });
       }
-      
+
       // Store images as JSON array in imageUrl field
       const imageUrl = JSON.stringify(data.images);
       const updated = storage.updateListing(Number(req.params.id), { imageUrl } as any, userId);
       res.json({ images: data.images, listing: updated });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error(`[fetch-photos] Error:`, e);
+      res.status(500).json({ error: `Server error: ${e.message}` });
     }
   });
 

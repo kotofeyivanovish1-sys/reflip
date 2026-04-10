@@ -291,16 +291,17 @@ export interface ScrapedListingData {
 }
 
 export async function fetchPoshmarkListing(listingUrl: string): Promise<ScrapedListingData | null> {
+  let url = listingUrl.trim();
+  if (!url.startsWith("http")) {
+    url = `https://poshmark.com/listing/${url}`;
+  }
+
+  const attempts: string[] = [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+
+  let html = "";
   try {
-    // Normalize URL — accept full URLs or just listing IDs
-    let url = listingUrl.trim();
-    if (!url.startsWith("http")) {
-      url = `https://poshmark.com/listing/${url}`;
-    }
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
-
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
@@ -311,69 +312,79 @@ export async function fetchPoshmarkListing(listingUrl: string): Promise<ScrapedL
       redirect: "follow",
     });
     clearTimeout(timer);
-
-    if (!res.ok) return null;
-    const html = await res.text();
-
-    // Parse __NEXT_DATA__ JSON
-    const jsonMatch = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-    if (!jsonMatch) return null;
-
-    const data = JSON.parse(jsonMatch[1]);
-    const props = data?.props?.pageProps;
-
-    // Try different paths for the listing object
-    const listing = props?.listing || props?.data?.listing || props?.post || props?.data?.post || null;
-    if (!listing) return null;
-
-    // Extract images — Poshmark stores them in various fields
-    const images: string[] = [];
-    const pics = listing.pictures || listing.photos || listing.cover_shot_pictures || [];
-    for (const pic of pics) {
-      // Poshmark uses different image size URLs; prefer large
-      const imgUrl = pic.url_original || pic.url_full || pic.url_large || pic.url || pic;
-      if (typeof imgUrl === "string" && imgUrl.startsWith("http")) {
-        images.push(imgUrl);
-      }
-    }
-    // Also check cover_shot
-    if (listing.cover_shot?.url_original || listing.cover_shot?.url_full) {
-      const coverUrl = listing.cover_shot.url_original || listing.cover_shot.url_full;
-      if (!images.includes(coverUrl)) images.unshift(coverUrl);
-    }
-
-    // Fallback: try to find og:image meta tags if no images from JSON
-    if (images.length === 0) {
-      const ogRegex = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/gi;
-      let ogMatch;
-      while ((ogMatch = ogRegex.exec(html)) !== null) {
-        if (ogMatch[1] && !images.includes(ogMatch[1])) images.push(ogMatch[1]);
-      }
-    }
-    // Fallback: find Poshmark CDN image URLs directly in HTML
-    if (images.length === 0) {
-      const cdnRegex = /https:\/\/di2ponv0v5otw\.cloudfront\.net\/[^\s"']+/g;
-      let cdnMatch;
-      while ((cdnMatch = cdnRegex.exec(html)) !== null) {
-        const clean = cdnMatch[0].replace(/&amp;/g, "&");
-        if (!images.includes(clean)) images.push(clean);
-      }
-    }
-
-    return {
-      title: listing.title || listing.display_title || "",
-      description: listing.description || "",
-      price: parseFloat(listing.price_amount?.val || listing.original_price_amount?.val || listing.price || "0"),
-      brand: listing.brand?.name || listing.brand_name || listing.brand || null,
-      size: listing.size?.display || listing.size_display || listing.size || null,
-      condition: listing.condition || listing.inventory?.condition || null,
-      category: listing.category_v2?.display || listing.department?.display || listing.category || null,
-      images,
-      url,
-    };
-  } catch (e) {
-    return null;
+    if (!res.ok) throw new Error(`Poshmark returned HTTP ${res.status}`);
+    html = await res.text();
+  } catch (e: any) {
+    clearTimeout(timer);
+    throw new Error(`Could not fetch Poshmark page: ${e.message}`);
   }
+
+  const images: string[] = [];
+  let listingData: any = null;
+
+  // 1) Try __NEXT_DATA__ JSON
+  const jsonMatch = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (jsonMatch) {
+    try {
+      const data = JSON.parse(jsonMatch[1]);
+      const props = data?.props?.pageProps;
+      listingData = props?.listing || props?.data?.listing || props?.post || props?.data?.post || null;
+
+      if (listingData) {
+        const pics = listingData.pictures || listingData.photos || listingData.cover_shot_pictures || [];
+        for (const pic of pics) {
+          const imgUrl = pic.url_original || pic.url_full || pic.url_large || pic.url || pic;
+          if (typeof imgUrl === "string" && imgUrl.startsWith("http")) images.push(imgUrl);
+        }
+        if (listingData.cover_shot?.url_original || listingData.cover_shot?.url_full) {
+          const coverUrl = listingData.cover_shot.url_original || listingData.cover_shot.url_full;
+          if (!images.includes(coverUrl)) images.unshift(coverUrl);
+        }
+      } else {
+        attempts.push("__NEXT_DATA__ found but listing object missing");
+      }
+    } catch { attempts.push("__NEXT_DATA__ JSON parse failed"); }
+  } else {
+    attempts.push("No __NEXT_DATA__ in HTML");
+  }
+
+  // 2) Fallback: og:image meta tags
+  if (images.length === 0) {
+    const ogRegex = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/gi;
+    let ogMatch;
+    while ((ogMatch = ogRegex.exec(html)) !== null) {
+      if (ogMatch[1] && !images.includes(ogMatch[1])) images.push(ogMatch[1]);
+    }
+    if (images.length === 0) attempts.push("No og:image meta tags found");
+  }
+
+  // 3) Fallback: Poshmark CDN URLs in HTML
+  if (images.length === 0) {
+    const cdnRegex = /https:\/\/di2ponv0v5otw\.cloudfront\.net\/[^\s"']+/g;
+    let cdnMatch;
+    while ((cdnMatch = cdnRegex.exec(html)) !== null) {
+      const clean = cdnMatch[0].replace(/&amp;/g, "&");
+      if (!images.includes(clean)) images.push(clean);
+    }
+    if (images.length === 0) attempts.push("No CDN image URLs in HTML");
+  }
+
+  if (images.length === 0) {
+    console.error(`[fetchPoshmarkListing] No images found:`, attempts);
+    throw new Error(`Poshmark page loaded but no images found: ${attempts.join("; ")}`);
+  }
+
+  return {
+    title: listingData?.title || listingData?.display_title || "",
+    description: listingData?.description || "",
+    price: parseFloat(listingData?.price_amount?.val || listingData?.original_price_amount?.val || listingData?.price || "0"),
+    brand: listingData?.brand?.name || listingData?.brand_name || listingData?.brand || null,
+    size: listingData?.size?.display || listingData?.size_display || listingData?.size || null,
+    condition: listingData?.condition || listingData?.inventory?.condition || null,
+    category: listingData?.category_v2?.display || listingData?.department?.display || listingData?.category || null,
+    images,
+    url,
+  };
 }
 
 export async function searchAllPlatforms(query: string, size?: string): Promise<MarketData[]> {
@@ -393,35 +404,31 @@ export async function searchAllPlatforms(query: string, size?: string): Promise<
 }
 
 export async function fetchDepopListing(listingUrl: string): Promise<ScrapedListingData | null> {
-  try {
-    const slugMatch = listingUrl.match(/products\/([A-Za-z0-9_-]+)/);
-    const slug = slugMatch ? slugMatch[1] : listingUrl.replace(/\/$/, "").split('/').pop();
-    if (!slug) return null;
+  const slugMatch = listingUrl.match(/products\/([A-Za-z0-9_.-]+)/);
+  const slug = slugMatch ? slugMatch[1] : listingUrl.replace(/\/$/, "").split('/').pop();
+  if (!slug) throw new Error("Could not extract product slug from Depop URL");
 
-    // Try API first
+  const attempts: string[] = [];
+  let apiData: any = null;
+  const images: string[] = [];
+
+  // 1) Try Depop API
+  try {
     const prodUrl = `https://webapi.depop.com/api/v2/products/${slug}/`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
-
-    let apiData: any = null;
-    try {
-      const res = await fetch(prodUrl, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          "Accept": "application/json",
-          "depop-user-country": "US",
-          "depop-user-currency": "USD"
-        }
-      });
-      clearTimeout(timer);
-      if (res.ok) apiData = await res.json();
-    } catch { clearTimeout(timer); }
-
-    const images: string[] = [];
-
-    if (apiData) {
-      // Extract images from API response
+    const res = await fetch(prodUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "depop-user-country": "US",
+        "depop-user-currency": "USD"
+      }
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      apiData = await res.json();
       const pics = apiData.pictures || apiData.images || apiData.preview?.images || [];
       if (Array.isArray(pics)) {
         for (const p of pics) {
@@ -436,77 +443,94 @@ export async function fetchDepopListing(listingUrl: string): Promise<ScrapedList
           }
         }
       }
+      if (images.length === 0) attempts.push(`API ok but no images in response (keys: ${Object.keys(apiData).join(",")})`);
+    } else {
+      attempts.push(`API returned ${res.status}`);
     }
+  } catch (e: any) {
+    attempts.push(`API failed: ${e.message}`);
+  }
 
-    // Fallback: scrape the HTML product page for og:image and other image tags
-    if (images.length === 0) {
-      const htmlCtrl = new AbortController();
-      const htmlTimer = setTimeout(() => htmlCtrl.abort(), 10000);
-      try {
-        const pageUrl = `https://www.depop.com/products/${slug}/`;
-        const htmlRes = await fetch(pageUrl, {
-          signal: htmlCtrl.signal,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          },
-          redirect: "follow",
-        });
-        clearTimeout(htmlTimer);
-        if (htmlRes.ok) {
-          const html = await htmlRes.text();
-          // Try __NEXT_DATA__ first
-          const nextData = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-          if (nextData) {
-            try {
-              const nd = JSON.parse(nextData[1]);
-              const product = nd?.props?.pageProps?.product || nd?.props?.pageProps?.data?.product;
-              if (product?.pictures) {
-                for (const p of product.pictures) {
-                  if (Array.isArray(p) && p.length > 0) {
-                    const best = p[p.length - 1];
-                    const imgUrl = typeof best === "string" ? best : best.url;
-                    if (imgUrl) images.push(imgUrl);
-                  } else if (p.url) {
-                    images.push(p.url);
-                  }
+  // 2) Try HTML page scraping
+  if (images.length === 0) {
+    try {
+      const pageUrl = `https://www.depop.com/products/${slug}/`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const htmlRes = await fetch(pageUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        redirect: "follow",
+      });
+      clearTimeout(timer);
+      if (htmlRes.ok) {
+        const html = await htmlRes.text();
+
+        // Try __NEXT_DATA__
+        const nextData = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+        if (nextData) {
+          try {
+            const nd = JSON.parse(nextData[1]);
+            const product = nd?.props?.pageProps?.product || nd?.props?.pageProps?.data?.product;
+            if (product?.pictures) {
+              for (const p of product.pictures) {
+                if (Array.isArray(p) && p.length > 0) {
+                  const best = p[p.length - 1];
+                  const imgUrl = typeof best === "string" ? best : best.url;
+                  if (imgUrl) images.push(imgUrl);
+                } else if (p.url) {
+                  images.push(p.url);
                 }
               }
-            } catch {}
-          }
-          // Fallback: og:image meta tags
-          if (images.length === 0) {
-            const ogRegex = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/gi;
-            let m;
-            while ((m = ogRegex.exec(html)) !== null) {
-              if (m[1] && !images.includes(m[1])) images.push(m[1]);
             }
-          }
-          // Fallback: any large product images in srcset or src
-          if (images.length === 0) {
-            const imgRegex = /https:\/\/media-photos\.depop\.com\/[^\s"']+/g;
-            let m;
-            while ((m = imgRegex.exec(html)) !== null) {
-              const clean = m[0].replace(/&amp;/g, "&");
-              if (!images.includes(clean)) images.push(clean);
-            }
+          } catch {}
+        }
+
+        // Fallback: og:image
+        if (images.length === 0) {
+          const ogRegex = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/gi;
+          let m;
+          while ((m = ogRegex.exec(html)) !== null) {
+            if (m[1] && !images.includes(m[1])) images.push(m[1]);
           }
         }
-      } catch { clearTimeout(htmlTimer); }
-    }
 
-    return {
-      title: apiData?.slug || apiData?.description?.slice(0, 80) || slug || "",
-      description: apiData?.description || "",
-      price: parseFloat(apiData?.price?.priceAmount || apiData?.preview_price_data?.priceAmount || "0"),
-      brand: apiData?.brand?.name || apiData?.brand || null,
-      size: apiData?.size?.name || apiData?.size || null,
-      condition: apiData?.condition || null,
-      category: apiData?.category?.name || apiData?.category || null,
-      images,
-      url: listingUrl
-    };
-  } catch (e) {
-    return null;
+        // Fallback: CDN URLs
+        if (images.length === 0) {
+          const imgRegex = /https:\/\/media-photos\.depop\.com\/[^\s"']+/g;
+          let m;
+          while ((m = imgRegex.exec(html)) !== null) {
+            const clean = m[0].replace(/&amp;/g, "&");
+            if (!images.includes(clean)) images.push(clean);
+          }
+        }
+
+        if (images.length === 0) attempts.push("HTML page loaded but no images found");
+      } else {
+        attempts.push(`HTML page returned ${htmlRes.status}`);
+      }
+    } catch (e: any) {
+      attempts.push(`HTML page failed: ${e.message}`);
+    }
   }
+
+  if (images.length === 0) {
+    console.error(`[fetchDepopListing] All attempts failed for ${slug}:`, attempts);
+    throw new Error(`Could not fetch Depop photos: ${attempts.join("; ")}`);
+  }
+
+  return {
+    title: apiData?.slug || apiData?.description?.slice(0, 80) || slug || "",
+    description: apiData?.description || "",
+    price: parseFloat(apiData?.price?.priceAmount || apiData?.preview_price_data?.priceAmount || "0"),
+    brand: apiData?.brand?.name || apiData?.brand || null,
+    size: apiData?.size?.name || apiData?.size || null,
+    condition: apiData?.condition || null,
+    category: apiData?.category?.name || apiData?.category || null,
+    images,
+    url: listingUrl
+  };
 }
