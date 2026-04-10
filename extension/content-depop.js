@@ -1,172 +1,234 @@
 // ReFlip Sync — Depop Content Script
-// Runs on depop.com pages, scrapes listing data when asked by popup
+// Scrapes listing data from the user's authenticated Depop session
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "scrape_page" || msg.action === "scrape_all") {
-    scrapeDepopListings().then(sendResponse).catch((e) =>
+    scrapeDepopListings(msg.action === "scrape_all").then(sendResponse).catch((e) =>
       sendResponse({ error: e.message, listings: [], platform: "depop" })
     );
-    return true; // async response
+    return true;
   }
 });
 
-async function scrapeDepopListings() {
+async function scrapeDepopListings(fetchAll) {
   const url = window.location.href;
-  const listings = [];
 
   // ── Single product page ──
   if (url.includes("/products/")) {
     const item = scrapeDepopProductPage();
-    if (item) listings.push(item);
-    return { listings, platform: "depop" };
+    return { listings: item ? [item] : [], platform: "depop" };
   }
 
-  // ── Shop/closet page (e.g. depop.com/@username) ──
-  // Scroll to load more items, then scrape all product cards
-  if (url.match(/depop\.com\/@/)) {
-    // Auto-scroll to load all listings
-    await autoScroll();
-    const cards = document.querySelectorAll('a[href*="/products/"]');
-    const seen = new Set();
-
-    for (const card of cards) {
-      const href = card.getAttribute("href");
-      if (!href || seen.has(href)) continue;
-      seen.add(href);
-
-      const item = scrapeDepopCard(card);
-      if (item) listings.push(item);
-    }
-
-    return { listings, platform: "depop" };
+  // ── Shop/closet page — use Depop API (browser has auth cookies) ──
+  const usernameMatch = url.match(/depop\.com\/@([^/?#]+)/);
+  if (usernameMatch) {
+    const username = usernameMatch[1];
+    const listings = await fetchUserListingsViaApi(username);
+    if (listings.length > 0) return { listings, platform: "depop" };
   }
 
-  // ── Selling page ──
-  const cards = document.querySelectorAll('a[href*="/products/"]');
+  // Fallback: scroll and scrape cards, then fetch each product page
+  await autoScroll();
+  const links = [...document.querySelectorAll('a[href*="/products/"]')];
   const seen = new Set();
-  for (const card of cards) {
-    const href = card.getAttribute("href");
+  const productUrls = [];
+
+  for (const a of links) {
+    const href = a.getAttribute("href");
     if (!href || seen.has(href)) continue;
     seen.add(href);
-    const item = scrapeDepopCard(card);
+    productUrls.push(href.startsWith("http") ? href : `https://www.depop.com${href}`);
+  }
+
+  // Fetch each product page for real data
+  const listings = [];
+  for (const pUrl of productUrls) {
+    const item = await fetchProductData(pUrl);
     if (item) listings.push(item);
   }
 
   return { listings, platform: "depop" };
 }
 
-function scrapeDepopProductPage() {
+// Use Depop's own API from the browser (user is authenticated)
+async function fetchUserListingsViaApi(username) {
+  const listings = [];
   try {
-    // Try __NEXT_DATA__ first
-    const nextDataEl = document.querySelector("#__NEXT_DATA__");
-    if (nextDataEl) {
-      try {
-        const nd = JSON.parse(nextDataEl.textContent);
-        const product = nd?.props?.pageProps?.product;
-        if (product) {
-          const images = [];
-          if (product.pictures) {
-            for (const p of product.pictures) {
-              if (Array.isArray(p) && p.length > 0) {
-                images.push(p[p.length - 1].url || p[0].url);
-              } else if (p.url) {
-                images.push(p.url);
-              }
+    // First get user ID
+    const userRes = await fetch(`https://webapi.depop.com/api/v1/users/${username}/`, {
+      credentials: "include",
+    });
+    if (!userRes.ok) throw new Error("Could not fetch user");
+    const userData = await userRes.json();
+    const userId = userData.id;
+
+    // Fetch all products
+    let offset = 0;
+    const limit = 24;
+    let hasMore = true;
+
+    while (hasMore) {
+      const prodRes = await fetch(
+        `https://webapi.depop.com/api/v2/users/${userId}/products/?offset=${offset}&limit=${limit}`,
+        { credentials: "include" }
+      );
+      if (!prodRes.ok) break;
+      const prodData = await prodRes.json();
+      const products = prodData.products || prodData.objects || [];
+      if (products.length === 0) break;
+
+      for (const p of products) {
+        // Get high-res images
+        const images = [];
+        if (p.pictures || p.images) {
+          for (const pic of (p.pictures || p.images)) {
+            if (Array.isArray(pic)) {
+              // Array of sizes — pick largest
+              const best = pic[pic.length - 1];
+              images.push(typeof best === "string" ? best : best.url);
+            } else if (pic.formats) {
+              // Pick largest format
+              const best = pic.formats[pic.formats.length - 1];
+              images.push(best?.url || pic.url);
+            } else if (pic.url) {
+              images.push(pic.url);
+            } else if (typeof pic === "string") {
+              images.push(pic);
             }
           }
-          return {
-            title: product.description?.slice(0, 120) || product.slug || "",
-            description: product.description || "",
-            price: parseFloat(product.price?.priceAmount || product.preview_price_data?.priceAmount || "0"),
-            brand: product.brand?.name || product.brand || null,
-            size: product.size?.name || product.size || null,
-            condition: product.condition || null,
-            status: product.status === 1 ? "active" : product.sold ? "sold" : "active",
-            images,
-            url: window.location.href,
-          };
         }
-      } catch {}
+        // Upgrade image URLs to full resolution
+        const hiResImages = images.map(upgradeDepopImageUrl);
+
+        const slug = p.slug || p.id || "";
+        listings.push({
+          title: p.description?.split("\n")[0]?.slice(0, 120) || slug,
+          description: p.description || "",
+          price: parseFloat(p.price?.priceAmount || p.preview_price_data?.priceAmount || p.price_amount || "0"),
+          brand: p.brand?.name || (typeof p.brand === "string" ? p.brand : null),
+          size: p.size?.name || (typeof p.size === "string" ? p.size : null),
+          condition: p.condition || null,
+          status: p.status === 0 || p.sold ? "sold" : "active",
+          images: hiResImages,
+          url: `https://www.depop.com/products/${slug}/`,
+        });
+      }
+
+      offset += limit;
+      hasMore = products.length === limit;
+      if (!hasMore) break;
+      await new Promise((r) => setTimeout(r, 300)); // Rate limit
+    }
+  } catch (e) {
+    console.error("[ReFlip] API fetch failed:", e);
+  }
+  return listings;
+}
+
+// Upgrade Depop CDN URLs to full resolution
+function upgradeDepopImageUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  // Depop images: replace /c/ crop params with full size
+  return url
+    .replace(/\/c\/[^/]+\//, "/") // remove crop
+    .replace(/w_\d+/, "w_1280")   // max width
+    .replace(/h_\d+/, "h_1280");  // max height
+}
+
+// Fetch single product page data
+async function fetchProductData(productUrl) {
+  try {
+    const slug = productUrl.match(/products\/([^/?#]+)/)?.[1];
+    if (!slug) return null;
+
+    const res = await fetch(`https://webapi.depop.com/api/v2/products/${slug}/`, {
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    const p = await res.json();
+
+    const images = [];
+    if (p.pictures) {
+      for (const pic of p.pictures) {
+        if (Array.isArray(pic)) {
+          const best = pic[pic.length - 1];
+          images.push(typeof best === "string" ? best : best.url);
+        } else if (pic.url) {
+          images.push(pic.url);
+        }
+      }
     }
 
-    // Fallback: scrape DOM directly
-    const title = document.querySelector('meta[property="og:title"]')?.content || document.title;
-    const price = document.querySelector('meta[property="og:price:amount"]')?.content ||
-                  document.querySelector('[data-testid*="price"]')?.textContent?.replace(/[^0-9.]/g, "");
-    const images = [];
-    document.querySelectorAll('meta[property="og:image"]').forEach((m) => {
-      if (m.content) images.push(m.content);
-    });
-    // Also grab all product images visible on page
-    document.querySelectorAll('img[src*="media-photos.depop.com"]').forEach((img) => {
-      const src = img.src || img.getAttribute("data-src");
-      if (src && !images.includes(src)) images.push(src);
-    });
-
     return {
-      title: title || "",
-      description: "",
-      price: parseFloat(price || "0"),
-      brand: null,
-      size: null,
-      condition: null,
-      status: "active",
-      images,
-      url: window.location.href,
+      title: p.description?.split("\n")[0]?.slice(0, 120) || slug,
+      description: p.description || "",
+      price: parseFloat(p.price?.priceAmount || "0"),
+      brand: p.brand?.name || null,
+      size: p.size?.name || null,
+      condition: p.condition || null,
+      status: p.sold ? "sold" : "active",
+      images: images.map(upgradeDepopImageUrl),
+      url: productUrl,
     };
   } catch {
     return null;
   }
 }
 
-function scrapeDepopCard(card) {
-  try {
-    const href = card.getAttribute("href");
-    const fullUrl = href.startsWith("http") ? href : `https://www.depop.com${href}`;
-
-    // Get image
-    const img = card.querySelector("img");
-    const imgSrc = img?.src || img?.getAttribute("data-src") || "";
-    const images = imgSrc ? [imgSrc] : [];
-
-    // Get price — usually in a sibling or child element
-    const priceEl = card.querySelector('[class*="Price"], [class*="price"]') ||
-                    card.parentElement?.querySelector('[class*="Price"], [class*="price"]');
-    const priceText = priceEl?.textContent?.replace(/[^0-9.]/g, "") || "0";
-
-    // Get title from alt text or aria-label
-    const title = img?.alt || card.getAttribute("aria-label") || "";
-
-    return {
-      title,
-      description: "",
-      price: parseFloat(priceText) || 0,
-      brand: null,
-      size: null,
-      condition: null,
-      status: "active",
-      images,
-      url: fullUrl,
-    };
-  } catch {
-    return null;
+function scrapeDepopProductPage() {
+  // Try __NEXT_DATA__
+  const nextDataEl = document.querySelector("#__NEXT_DATA__");
+  if (nextDataEl) {
+    try {
+      const nd = JSON.parse(nextDataEl.textContent);
+      const p = nd?.props?.pageProps?.product;
+      if (p) {
+        const images = [];
+        if (p.pictures) {
+          for (const pic of p.pictures) {
+            if (Array.isArray(pic)) images.push(pic[pic.length - 1]?.url || pic[0]?.url);
+            else if (pic.url) images.push(pic.url);
+          }
+        }
+        return {
+          title: p.description?.split("\n")[0]?.slice(0, 120) || p.slug || "",
+          description: p.description || "",
+          price: parseFloat(p.price?.priceAmount || "0"),
+          brand: p.brand?.name || null,
+          size: p.size?.name || null,
+          condition: p.condition || null,
+          status: p.sold ? "sold" : "active",
+          images: images.map(upgradeDepopImageUrl),
+          url: window.location.href,
+        };
+      }
+    } catch {}
   }
+
+  // Fallback: meta tags
+  const images = [];
+  document.querySelectorAll('meta[property="og:image"]').forEach((m) => {
+    if (m.content) images.push(m.content);
+  });
+
+  return {
+    title: document.querySelector('meta[property="og:title"]')?.content || document.title,
+    description: document.querySelector('meta[property="og:description"]')?.content || "",
+    price: parseFloat(document.querySelector('meta[property="og:price:amount"]')?.content || "0"),
+    brand: null, size: null, condition: null,
+    status: "active",
+    images,
+    url: window.location.href,
+  };
 }
 
 async function autoScroll() {
-  const distance = 800;
-  const maxScrolls = 30;
-  let scrolls = 0;
   let lastHeight = document.body.scrollHeight;
-
-  while (scrolls < maxScrolls) {
-    window.scrollBy(0, distance);
+  for (let i = 0; i < 30; i++) {
+    window.scrollBy(0, 800);
     await new Promise((r) => setTimeout(r, 500));
-    const newHeight = document.body.scrollHeight;
-    if (newHeight === lastHeight) break;
-    lastHeight = newHeight;
-    scrolls++;
+    if (document.body.scrollHeight === lastHeight) break;
+    lastHeight = document.body.scrollHeight;
   }
-  // Scroll back to top
   window.scrollTo(0, 0);
 }

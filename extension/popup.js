@@ -113,19 +113,19 @@ $("#sync-btn").addEventListener("click", async () => {
     $("#new-count").textContent = stats.created;
     await chrome.storage.local.set({ reflip_stats: stats });
 
-    addLog(`Done! ${stats.synced} synced, ${stats.created} new`, "ok");
+    addLog(`Done! ${stats.linked || 0} linked, ${stats.created} unmatched`, "ok");
   } catch (e) {
     addLog(`Error: ${e.message}`, "err");
   } finally {
     $("#sync-btn").disabled = false;
-    $("#sync-btn").textContent = "Sync This Page";
+    $("#sync-btn").textContent = "Link & Sync This Page";
   }
 });
 
-// ─── Sync All (sends message to content script to navigate) ───
+// ─── Sync All ───
 $("#sync-all-btn").addEventListener("click", async () => {
   $("#sync-all-btn").disabled = true;
-  $("#sync-all-btn").textContent = "Syncing all...";
+  $("#sync-all-btn").textContent = "Linking...";
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -143,44 +143,79 @@ $("#sync-all-btn").addEventListener("click", async () => {
     $("#new-count").textContent = stats.created;
     await chrome.storage.local.set({ reflip_stats: stats });
 
-    addLog(`Done! ${stats.synced} synced, ${stats.created} new`, "ok");
+    addLog(`Done! ${stats.linked || 0} linked, ${stats.created} unmatched`, "ok");
   } catch (e) {
     addLog(`Error: ${e.message}`, "err");
   } finally {
     $("#sync-all-btn").disabled = false;
-    $("#sync-all-btn").textContent = "Sync All My Listings";
+    $("#sync-all-btn").textContent = "Link All My Listings";
   }
 });
 
-// ─── Sync logic: send scraped listings to ReFlip API ───
+// ─── Sync logic: LINK platform listings to existing ReFlip listings ───
 async function syncListings(listings, platform) {
-  // Get existing listings from ReFlip
-  const res = await fetch(`${config.serverUrl}/api/listings?platform=${platform}`, {
+  // Get ALL existing listings from ReFlip (not filtered by platform)
+  const res = await fetch(`${config.serverUrl}/api/listings`, {
     headers: { Authorization: `Bearer ${config.token}` },
   });
   if (!res.ok) throw new Error("Could not fetch existing listings");
   const existing = await res.json();
 
   const platformUrlField = `${platform}Url`; // depopUrl, poshmarkUrl, etc.
-  let synced = 0;
-  let created = 0;
+  let linked = 0;
+  let updated = 0;
+  let skipped = 0;
 
   for (const item of listings) {
     try {
-      // Check if listing already exists (match by platform URL or title)
-      const match = existing.find(
-        (e) => (e[platformUrlField] && e[platformUrlField] === item.url) ||
-               (e.title && e.title.toLowerCase() === item.title.toLowerCase())
+      // 1) Exact match by platform URL (already linked)
+      let match = existing.find(
+        (e) => e[platformUrlField] && e[platformUrlField] === item.url
       );
 
+      // 2) Fuzzy match by title
+      if (!match && item.title) {
+        const itemWords = normalizeTitle(item.title);
+        let bestScore = 0;
+        let bestMatch = null;
+
+        for (const e of existing) {
+          if (!e.title) continue;
+          const score = titleSimilarity(itemWords, normalizeTitle(e.title));
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = e;
+          }
+        }
+        // Need at least 40% word overlap to consider it a match
+        if (bestScore >= 0.4) match = bestMatch;
+      }
+
       if (match) {
-        // Update existing listing — sync price, status, photos
+        // Link & update existing listing
         const updates = {};
-        if (item.price && item.price !== match.listedPrice) updates.listedPrice = item.price;
-        if (item.status && item.status !== match.status) updates.status = item.status;
-        if (item.url && !match[platformUrlField]) updates[platformUrlField] = item.url;
-        if (item.images && item.images.length > 0 && !match.imageUrl) {
-          updates.imageUrl = JSON.stringify(item.images);
+
+        // Always set platform URL
+        if (item.url && !match[platformUrlField]) {
+          updates[platformUrlField] = item.url;
+        }
+
+        // Update price if we have one and existing doesn't
+        if (item.price && item.price > 0 && (!match.listedPrice || match.listedPrice === 0)) {
+          updates.listedPrice = item.price;
+        }
+
+        // Update photos if better quality available
+        if (item.images && item.images.length > 0) {
+          const existingImages = parseImages(match.imageUrl);
+          if (existingImages.length === 0 || containsThumbnails(existingImages)) {
+            updates.imageUrl = JSON.stringify(item.images);
+          }
+        }
+
+        // Sync sold status
+        if (item.status === "sold" && match.status === "active") {
+          updates.status = "sold";
         }
 
         if (Object.keys(updates).length > 0) {
@@ -192,43 +227,51 @@ async function syncListings(listings, platform) {
             },
             body: JSON.stringify(updates),
           });
-          addLog(`Updated: ${item.title.slice(0, 40)}...`);
+          const action = !match[platformUrlField] ? "Linked" : "Updated";
+          addLog(`${action}: ${(match.title || item.title).slice(0, 45)}`, "ok");
+          linked++;
+        } else {
+          updated++;
         }
-        synced++;
       } else {
-        // Create new listing
-        const body = {
-          title: item.title,
-          description: item.description || item.title,
-          brand: item.brand || null,
-          size: item.size || null,
-          condition: item.condition || "good",
-          platform,
-          status: item.status || "active",
-          listedPrice: item.price || 0,
-          costPrice: 0,
-          imageUrl: item.images?.length > 0 ? JSON.stringify(item.images) : null,
-          [platformUrlField]: item.url,
-        };
-
-        await fetch(`${config.serverUrl}/api/listings`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${config.token}`,
-          },
-          body: JSON.stringify(body),
-        });
-        addLog(`New: ${item.title.slice(0, 40)}...`, "ok");
-        created++;
-        synced++;
+        // No match found — skip (don't create)
+        addLog(`No match: "${item.title?.slice(0, 40)}" — $${item.price}`, "err");
+        skipped++;
       }
     } catch (e) {
-      addLog(`Failed: ${item.title?.slice(0, 30)} — ${e.message}`, "err");
+      addLog(`Error: ${item.title?.slice(0, 30)} — ${e.message}`, "err");
     }
   }
 
-  return { synced, created };
+  return { synced: linked + updated, created: skipped, linked };
+}
+
+function normalizeTitle(title) {
+  return title.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .split(/\s+/)
+    .filter((w) => w.length > 1);
+}
+
+function titleSimilarity(words1, words2) {
+  if (words1.length === 0 || words2.length === 0) return 0;
+  const set2 = new Set(words2);
+  const matches = words1.filter((w) => set2.has(w)).length;
+  return matches / Math.max(words1.length, words2.length);
+}
+
+function parseImages(imageUrl) {
+  if (!imageUrl) return [];
+  try {
+    const parsed = JSON.parse(imageUrl);
+    return Array.isArray(parsed) ? parsed : [imageUrl];
+  } catch {
+    return imageUrl ? [imageUrl] : [];
+  }
+}
+
+function containsThumbnails(urls) {
+  return urls.some((u) => /w_\d{2,3}[^0-9]|\/thumb|_thumb|s_\d{2,3}[^0-9]/.test(u));
 }
 
 // ─── Log ───
