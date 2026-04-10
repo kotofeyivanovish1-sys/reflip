@@ -166,6 +166,15 @@ async function syncListings(listings, platform) {
   let updated = 0;
   let skipped = 0;
 
+  // Pre-compute all text for existing listings (title + description + brand)
+  const existingIndex = existing.map((e) => ({
+    listing: e,
+    words: normalizeText(`${e.title || ""} ${e.description || ""} ${e.brand || ""}`),
+    brand: (e.brand || "").toLowerCase().trim(),
+    size: (e.size || "").toLowerCase().trim(),
+    price: e.listedPrice || 0,
+  }));
+
   for (const item of listings) {
     try {
       // 1) Exact match by platform URL (already linked)
@@ -173,47 +182,73 @@ async function syncListings(listings, platform) {
         (e) => e[platformUrlField] && e[platformUrlField] === item.url
       );
 
-      // 2) Fuzzy match by title
-      if (!match && item.title) {
-        const itemWords = normalizeTitle(item.title);
+      // 2) Smart match using multiple signals
+      if (!match) {
+        const itemWords = normalizeText(`${item.title || ""} ${item.description || ""} ${item.brand || ""}`);
+        const itemBrand = (item.brand || "").toLowerCase().trim();
+        const itemSize = (item.size || "").toLowerCase().trim();
+        const itemPrice = item.price || 0;
+
         let bestScore = 0;
         let bestMatch = null;
 
-        for (const e of existing) {
-          if (!e.title) continue;
-          const score = titleSimilarity(itemWords, normalizeTitle(e.title));
+        for (const ei of existingIndex) {
+          // Skip if already linked to this platform
+          if (ei.listing[platformUrlField]) continue;
+
+          let score = 0;
+
+          // Word overlap (title + description + brand combined)
+          const wordScore = wordOverlap(itemWords, ei.words);
+          score += wordScore * 0.5;
+
+          // Brand match bonus
+          if (itemBrand && ei.brand && (
+            itemBrand.includes(ei.brand) || ei.brand.includes(itemBrand)
+          )) {
+            score += 0.25;
+          }
+
+          // Size match bonus
+          if (itemSize && ei.size && itemSize === ei.size) {
+            score += 0.15;
+          }
+
+          // Price proximity bonus (within 30%)
+          if (itemPrice > 0 && ei.price > 0) {
+            const priceDiff = Math.abs(itemPrice - ei.price) / Math.max(itemPrice, ei.price);
+            if (priceDiff < 0.3) score += 0.1 * (1 - priceDiff);
+          }
+
           if (score > bestScore) {
             bestScore = score;
-            bestMatch = e;
+            bestMatch = ei.listing;
           }
         }
-        // Need at least 40% word overlap to consider it a match
-        if (bestScore >= 0.4) match = bestMatch;
+
+        // Threshold: 0.25 is enough if brand+size+price match
+        if (bestScore >= 0.25 && bestMatch) {
+          match = bestMatch;
+          addLog(`Match (${(bestScore * 100).toFixed(0)}%): "${item.title?.slice(0, 30)}" → "${match.title?.slice(0, 30)}"`, "ok");
+        }
       }
 
       if (match) {
         // Link & update existing listing
         const updates = {};
 
-        // Always set platform URL
         if (item.url && !match[platformUrlField]) {
           updates[platformUrlField] = item.url;
         }
-
-        // Update price if we have one and existing doesn't
         if (item.price && item.price > 0 && (!match.listedPrice || match.listedPrice === 0)) {
           updates.listedPrice = item.price;
         }
-
-        // Update photos if better quality available
         if (item.images && item.images.length > 0) {
           const existingImages = parseImages(match.imageUrl);
           if (existingImages.length === 0 || containsThumbnails(existingImages)) {
             updates.imageUrl = JSON.stringify(item.images);
           }
         }
-
-        // Sync sold status
         if (item.status === "sold" && match.status === "active") {
           updates.status = "sold";
         }
@@ -227,15 +262,12 @@ async function syncListings(listings, platform) {
             },
             body: JSON.stringify(updates),
           });
-          const action = !match[platformUrlField] ? "Linked" : "Updated";
-          addLog(`${action}: ${(match.title || item.title).slice(0, 45)}`, "ok");
           linked++;
         } else {
           updated++;
         }
       } else {
-        // No match found — skip (don't create)
-        addLog(`No match: "${item.title?.slice(0, 40)}" — $${item.price}`, "err");
+        addLog(`No match: "${item.title?.slice(0, 40)}" $${item.price}`, "err");
         skipped++;
       }
     } catch (e) {
@@ -246,11 +278,27 @@ async function syncListings(listings, platform) {
   return { synced: linked + updated, created: skipped, linked };
 }
 
-function normalizeTitle(title) {
-  return title.toLowerCase()
+function normalizeText(text) {
+  return text.toLowerCase()
     .replace(/[^a-z0-9\s]/g, "")
     .split(/\s+/)
-    .filter((w) => w.length > 1);
+    .filter((w) => w.length > 1 && !STOP_WORDS.has(w));
+}
+
+const STOP_WORDS = new Set([
+  "the", "and", "for", "with", "this", "that", "from", "your", "have",
+  "are", "was", "were", "been", "has", "its", "very", "new", "like",
+  "just", "get", "got", "item", "listed", "listing", "size", "color",
+  "condition", "great", "good", "excellent", "brand", "free", "shipping",
+  "offers", "offer", "welcome", "worn", "never", "once", "times",
+]);
+
+function wordOverlap(words1, words2) {
+  if (words1.length === 0 || words2.length === 0) return 0;
+  const set2 = new Set(words2);
+  const matches = words1.filter((w) => set2.has(w)).length;
+  // Use min length so partial overlaps score higher
+  return matches / Math.min(words1.length, words2.length);
 }
 
 function titleSimilarity(words1, words2) {
