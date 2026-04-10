@@ -176,37 +176,31 @@ export default function Listings() {
       </header>
 
       {/* Filter bar */}
-      <div className="px-3 sm:px-5 md:px-6 py-2.5 sm:py-3 border-b border-border/60 flex flex-col gap-2">
-        {/* Status filters */}
-        <div className="flex gap-1 items-center overflow-x-auto scrollbar-none">
-          {STATUSES.map(s => (
-            <button key={s} onClick={() => setStatus(s)}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap ${
-                status === s
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
-              }`}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {/* Platform filters */}
-        <div className="flex gap-1 items-center overflow-x-auto scrollbar-none">
-          {PLATFORMS.map(p => (
-            <button key={p} onClick={() => setPlatform(p)}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                platform === p
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
-              }`}>
-              {p !== "all" && (
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PLATFORM_DOT[p] }} />
-              )}
-              {p.charAt(0).toUpperCase() + p.slice(1)}
-            </button>
-          ))}
-        </div>
+      <div className="px-3 sm:px-5 md:px-6 py-2 sm:py-3 border-b border-border/60 flex flex-wrap gap-1.5 sm:gap-2 items-center">
+        {STATUSES.map(s => (
+          <button key={s} onClick={() => setStatus(s)}
+            className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-all whitespace-nowrap ${
+              status === s
+                ? "bg-foreground text-background"
+                : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+        <div className="w-px h-4 bg-border/60" />
+        {PLATFORMS.map(p => (
+          <button key={p} onClick={() => setPlatform(p)}
+            className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-1 ${
+              platform === p
+                ? "bg-foreground text-background"
+                : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}>
+            {p !== "all" && (
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PLATFORM_DOT[p] }} />
+            )}
+            {p.charAt(0).toUpperCase() + p.slice(1)}
+          </button>
+        ))}
       </div>
 
       <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4">
@@ -533,65 +527,67 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
   const thumb = images[0];
 
   return (
-    <div className="glass-card rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:shadow-lg transition-all duration-300 border border-border/50">
-      <div className="flex flex-row gap-3 sm:gap-4">
+    <div className="glass-card rounded-xl sm:rounded-2xl p-2.5 sm:p-3 hover:shadow-lg transition-all duration-300 border border-border/50">
+      <div className="flex flex-row gap-2.5 sm:gap-3 items-center">
         {/* Thumbnail */}
         {thumb ? (
-          <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl overflow-hidden shrink-0 bg-muted/30 shadow-inner group">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg overflow-hidden shrink-0 bg-muted/30 shadow-inner group">
             <img src={thumb} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
           </div>
         ) : (
           <button
             onClick={onFetchPhotos}
-            className="w-16 h-16 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-secondary/40 hover:text-secondary/60 transition-colors group"
+            className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex items-center justify-center text-muted-foreground/40 hover:border-secondary/40 hover:text-secondary/60 transition-colors"
             title="Fetch photos from Depop/Poshmark"
           >
-            <ImagePlus size={16} className="sm:mb-1 group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-medium hidden sm:block">Add Photo</span>
+            <ImagePlus size={14} />
           </button>
         )}
 
         {/* Info */}
-        <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-1 sm:mb-1.5">
+        <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
             {bagNum && (
-              <span className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md shadow-sm">
-                <Package size={10} className="sm:w-3 sm:h-3" /> Bag #{bagNum}
+              <span className="inline-flex items-center gap-0.5 bg-primary/10 text-primary border border-primary/20 text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-px rounded shrink-0">
+                <Package size={9} /> #{bagNum}
               </span>
             )}
-            <p className="font-semibold text-sm sm:text-base truncate max-w-[140px] sm:max-w-[280px] md:max-w-none">{listing.title}</p>
-            <span className={`badge-${status} text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{status}</span>
-            <span className={`badge-${listing.platform} text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{listing.platform}</span>
-            {listing.brand && (
-              <span className="text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/50 hidden sm:inline-flex">{listing.brand}</span>
-            )}
+            <p className="font-semibold text-xs sm:text-sm truncate min-w-0">{listing.title}</p>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground flex-wrap">
-            <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70">Cost:</span> <span className="font-mono font-medium text-foreground">${listing.costPrice ?? "—"}</span></span>
-            <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70">Listed:</span> <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+            <span className={`badge-${status} text-[8px] sm:text-[9px] font-bold px-1.5 py-px rounded-full uppercase tracking-wider shrink-0`}>{status}</span>
+            <span className={`badge-${listing.platform} text-[8px] sm:text-[9px] font-bold px-1.5 py-px rounded-full uppercase tracking-wider shrink-0`}>{listing.platform}</span>
+            {listing.brand && (
+              <span className="text-[8px] sm:text-[9px] font-medium px-1.5 py-px rounded-full bg-muted text-muted-foreground shrink-0 border border-border/50 truncate max-w-[80px] sm:max-w-[120px]">{listing.brand}</span>
+            )}
+            <span className="text-[10px] sm:text-xs text-muted-foreground font-mono ml-auto shrink-0">
+              ${listing.costPrice ?? 0}
+              <span className="opacity-50 mx-0.5">/</span>
+              ${listing.listedPrice ?? 0}
+            </span>
             {listing.soldPrice != null && (
-              <span className="text-emerald-500 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-1.5 sm:px-2 py-0.5 rounded-md border border-emerald-500/20 text-xs">
-                +${(listing.soldPrice - listing.costPrice).toFixed(0)} NET
+              <span className="text-emerald-500 font-bold text-[10px] sm:text-xs shrink-0">
+                +${(listing.soldPrice - listing.costPrice).toFixed(0)}
               </span>
             )}
-
-            {/* PLATFORM LINKS PREVIEW */}
-            <div className="flex gap-1 ml-auto shrink-0">
-               {(listing as any).depopUrl && <a href={(listing as any).depopUrl} target="_blank" rel="noreferrer" title="Depop link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.depop}}>d</a>}
-               {(listing as any).vintedUrl && <a href={(listing as any).vintedUrl} target="_blank" rel="noreferrer" title="Vinted link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.vinted}}>v</a>}
-               {(listing as any).poshmarkUrl && <a href={(listing as any).poshmarkUrl} target="_blank" rel="noreferrer" title="Poshmark link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.poshmark}}>p</a>}
-               {(listing as any).ebayUrl && <a href={(listing as any).ebayUrl} target="_blank" rel="noreferrer" title="eBay link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.ebay}}>e</a>}
-            </div>
+            {/* Platform links */}
+            {((listing as any).depopUrl || (listing as any).vintedUrl || (listing as any).poshmarkUrl || (listing as any).ebayUrl) && (
+              <div className="flex gap-0.5 shrink-0">
+                {(listing as any).depopUrl && <a href={(listing as any).depopUrl} target="_blank" rel="noreferrer" title="Depop" className="w-4 h-4 rounded hover:opacity-80 flex items-center justify-center text-[8px] text-white" style={{background:PLATFORM_DOT.depop}}>d</a>}
+                {(listing as any).vintedUrl && <a href={(listing as any).vintedUrl} target="_blank" rel="noreferrer" title="Vinted" className="w-4 h-4 rounded hover:opacity-80 flex items-center justify-center text-[8px] text-white" style={{background:PLATFORM_DOT.vinted}}>v</a>}
+                {(listing as any).poshmarkUrl && <a href={(listing as any).poshmarkUrl} target="_blank" rel="noreferrer" title="Poshmark" className="w-4 h-4 rounded hover:opacity-80 flex items-center justify-center text-[8px] text-white" style={{background:PLATFORM_DOT.poshmark}}>p</a>}
+                {(listing as any).ebayUrl && <a href={(listing as any).ebayUrl} target="_blank" rel="noreferrer" title="eBay" className="w-4 h-4 rounded hover:opacity-80 flex items-center justify-center text-[8px] text-white" style={{background:PLATFORM_DOT.ebay}}>e</a>}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Actions — responsive */}
-        <div className="flex sm:flex-col items-center sm:items-end justify-center sm:justify-center gap-1.5 sm:gap-2 shrink-0 sm:border-l border-border/30 sm:pl-3 md:pl-4 ml-auto sm:ml-0">
-          {/* Primary CTA — always visible */}
+        {/* Actions */}
+        <div className="flex items-center gap-1 shrink-0">
           {status === "active" && (
             <Button
               variant="ghost" size="sm"
-              className="text-xs h-8 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-semibold"
+              className="text-xs h-7 w-7 sm:h-8 sm:w-auto sm:px-2 p-0 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-semibold"
               onClick={onMarkSold}
             >
               <CheckCircle size={13} />
@@ -601,7 +597,7 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
           {status === "pending" && (
             <Button
               variant="ghost" size="sm"
-              className="text-xs h-8 gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-semibold"
+              className="text-xs h-7 w-7 sm:h-8 sm:w-auto sm:px-2 p-0 gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-semibold"
               onClick={onActivate}
             >
               <Tag size={13} />
@@ -611,7 +607,7 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
           {status === "sold" && bagNum && (
             <Button
               variant="ghost" size="sm"
-              className="text-xs h-8 gap-1 text-emerald-600 hover:text-emerald-700"
+              className="text-xs h-7 w-7 sm:h-8 sm:w-auto sm:px-2 p-0 gap-1 text-emerald-600 hover:text-emerald-700"
               onClick={onQR}
             >
               <QrCode size={13} />
@@ -619,11 +615,10 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
             </Button>
           )}
 
-          {/* Secondary actions — dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
-                <MoreHorizontal size={15} />
+              <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-muted-foreground">
+                <MoreHorizontal size={14} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
