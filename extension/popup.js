@@ -40,7 +40,10 @@ function showMain() {
 
 // ─── Login ───
 $("#login-btn").addEventListener("click", async () => {
-  const serverUrl = $("#server-url").value.trim().replace(/\/$/, "");
+  let serverUrl = $("#server-url").value.trim().replace(/\/$/, "");
+  if (serverUrl && !serverUrl.startsWith("http")) {
+    serverUrl = `https://${serverUrl}`;
+  }
   const email = $("#email").value.trim();
   const password = $("#password").value;
 

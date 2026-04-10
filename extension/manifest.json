@@ -10,7 +10,9 @@
     "https://poshmark.com/*",
     "https://www.poshmark.com/*",
     "https://www.ebay.com/*",
-    "https://www.vinted.com/*"
+    "https://www.vinted.com/*",
+    "https://*.railway.app/*",
+    "http://localhost/*"
   ],
   "content_scripts": [
     {
