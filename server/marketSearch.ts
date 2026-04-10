@@ -278,7 +278,7 @@ function emptyMarketData(platform: string): MarketData {
 }
 
 // Fetch a single Poshmark listing page — extracts photos, title, price, description, etc.
-export interface PoshmarkListingData {
+export interface ScrapedListingData {
   title: string;
   description: string;
   price: number;
@@ -290,7 +290,7 @@ export interface PoshmarkListingData {
   url: string;
 }
 
-export async function fetchPoshmarkListing(listingUrl: string): Promise<PoshmarkListingData | null> {
+export async function fetchPoshmarkListing(listingUrl: string): Promise<ScrapedListingData | null> {
   try {
     // Normalize URL — accept full URLs or just listing IDs
     let url = listingUrl.trim();
@@ -381,4 +381,55 @@ export async function searchAllPlatforms(query: string, size?: string): Promise<
     depop.status === "fulfilled" ? depop.value : emptyMarketData("depop"),
     poshmark.status === "fulfilled" ? poshmark.value : emptyMarketData("poshmark"),
   ];
+}
+
+export async function fetchDepopListing(listingUrl: string): Promise<ScrapedListingData | null> {
+  try {
+    const slugMatch = listingUrl.match(/products\/([A-Za-z0-9_-]+)/);
+    const slug = slugMatch ? slugMatch[1] : listingUrl.replace(/\/$/, "").split('/').pop();
+    if (!slug) return null;
+
+    const prodUrl = `https://webapi.depop.com/api/v2/products/${slug}/`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(prodUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "depop-user-country": "US",
+        "depop-user-currency": "USD"
+      }
+    });
+    clearTimeout(timer);
+    
+    if (!res.ok) return null;
+    const data = await res.json();
+    
+    const images: string[] = [];
+    if (Array.isArray(data.pictures)) {
+      for (const p of data.pictures) {
+        if (Array.isArray(p) && p.length > 0) {
+          images.push(p[p.length - 1].url || p[0].url);
+        } else if (p.url) {
+          images.push(p.url);
+        } else if (typeof p === "string") {
+          images.push(p);
+        }
+      }
+    }
+    
+    return {
+      title: data.slug || "",
+      description: data.description || "",
+      price: parseFloat(data.price?.priceAmount || "0"),
+      brand: data.brand?.name || data.brand || null,
+      size: data.size?.name || data.size || null,
+      condition: data.condition || null,
+      category: data.category?.name || data.category || null,
+      images,
+      url: listingUrl
+    };
+  } catch (e) {
+    return null;
+  }
 }

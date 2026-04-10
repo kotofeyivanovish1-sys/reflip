@@ -80,6 +80,11 @@ try { sqlite.exec(`ALTER TABLE listings ADD COLUMN bag_number INTEGER`); } catch
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN user_id INTEGER`); } catch {}
 try { sqlite.exec(`ALTER TABLE scan_results ADD COLUMN user_id INTEGER`); } catch {}
 try { sqlite.exec(`ALTER TABLE bags ADD COLUMN user_id INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN depop_url TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN vinted_url TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN poshmark_url TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN ebay_url TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE users ADD COLUMN custom_background TEXT`); } catch {}
 
 // Migrate existing data: assign all unowned records to user id=1 (first user)
 // This ensures the first person who registers gets all their existing data
@@ -123,6 +128,10 @@ function mapRow(row: any): Listing {
     scanData: row.scan_data ?? row.scanData ?? null,
     notes: row.notes ?? null,
     bagNumber: row.bag_number ?? row.bagNumber ?? null,
+    depopUrl: row.depop_url ?? row.depopUrl ?? null,
+    vintedUrl: row.vinted_url ?? row.vintedUrl ?? null,
+    poshmarkUrl: row.poshmark_url ?? row.poshmarkUrl ?? null,
+    ebayUrl: row.ebay_url ?? row.ebayUrl ?? null,
   } as Listing;
 }
 
@@ -152,18 +161,21 @@ export interface IStorage {
     platformBreakdown: any[]; recentSales: Listing[]; monthlySales: any[];
   };
   getPlatformAnalytics(userId: number): any;
+  updateUserBackground(userId: number, customBackground: string): void;
 }
 
 class SQLiteStorage implements IStorage {
   async createUser(email: string, password: string, name?: string): Promise<Omit<User, 'passwordHash'>> {
     const hash = await bcrypt.hash(password, 10);
     const now = new Date().toISOString();
-    const result = sqlite.prepare(`INSERT INTO users (email, password_hash, name, created_at) VALUES (?,?,?,?) RETURNING id, email, name, created_at`).get(email, hash, name || null, now) as any;
+    const result = sqlite.prepare(`INSERT INTO users (email, password_hash, name, created_at) VALUES (?,?,?,?) RETURNING id, email, name, created_at, custom_background AS customBackground`).get(email, hash, name || null, now) as any;
     return result;
   }
 
   getUserByEmail(email: string): User | undefined {
-    return sqlite.prepare(`SELECT * FROM users WHERE email = ?`).get(email) as User | undefined;
+    const row = sqlite.prepare(`SELECT * FROM users WHERE email = ?`).get(email) as any;
+    if (!row) return undefined;
+    return { ...row, customBackground: row.custom_background } as User;
   }
 
   async verifyUser(email: string, password: string): Promise<Omit<User, 'passwordHash'> | null> {
@@ -171,7 +183,11 @@ class SQLiteStorage implements IStorage {
     if (!row) return null;
     const ok = await bcrypt.compare(password, row.password_hash);
     if (!ok) return null;
-    return { id: row.id, email: row.email, name: row.name, createdAt: row.created_at };
+    return { id: row.id, email: row.email, name: row.name, createdAt: row.created_at, customBackground: row.custom_background };
+  }
+
+  updateUserBackground(userId: number, customBackground: string): void {
+    sqlite.prepare("UPDATE users SET custom_background = ? WHERE id = ?").run(customBackground, userId);
   }
 
   getBags(userId: number): { bagNumber: number; item?: Listing }[] {
@@ -223,8 +239,8 @@ class SQLiteStorage implements IStorage {
     } catch {}
 
     const result = sqlite.prepare(`
-      INSERT INTO listings (user_id,title,description,brand,size,condition,category,cost_price,status,platform,listed_price,sold_price,sold_at,created_at,ai_texts,price_suggestions,image_url,scan_data,notes,bag_number)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *
+      INSERT INTO listings (user_id,title,description,brand,size,condition,category,cost_price,status,platform,listed_price,sold_price,sold_at,created_at,ai_texts,price_suggestions,image_url,scan_data,notes,bag_number,depop_url,vinted_url,poshmark_url,ebay_url)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *
     `).get(
       userId,
       data.title || "Untitled", data.description || data.title || "—",
@@ -232,7 +248,8 @@ class SQLiteStorage implements IStorage {
       data.costPrice, data.status ?? "active", data.platform,
       data.listedPrice ?? null, data.soldPrice ?? null, data.soldAt ?? null,
       now, data.aiTexts ?? null, data.priceSuggestions ?? null, data.imageUrl ?? null,
-      (data as any).scanData ?? null, (data as any).notes ?? null, bagNumber
+      (data as any).scanData ?? null, (data as any).notes ?? null, bagNumber,
+      (data as any).depopUrl ?? null, (data as any).vintedUrl ?? null, (data as any).poshmarkUrl ?? null, (data as any).ebayUrl ?? null
     ) as any;
     return mapRow(result);
   }
@@ -249,6 +266,7 @@ class SQLiteStorage implements IStorage {
       soldPrice: "sold_price", soldAt: "sold_at", createdAt: "created_at",
       aiTexts: "ai_texts", priceSuggestions: "price_suggestions", imageUrl: "image_url",
       scanData: "scan_data", notes: "notes", bagNumber: "bag_number", userId: "user_id",
+      depopUrl: "depop_url", vintedUrl: "vinted_url", poshmarkUrl: "poshmark_url", ebayUrl: "ebay_url",
     };
     const setClauses = fields.map(f => `${colMap[f] || f} = ?`).join(", ");
     const values = fields.map(f => (data as any)[f]);

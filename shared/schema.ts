@@ -8,6 +8,7 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name"),
+  customBackground: text("custom_background"),
   createdAt: text("created_at").notNull().default(""),
 });
 
@@ -49,6 +50,10 @@ export const listings = sqliteTable("listings", {
   scanData: text("scan_data"),
   notes: text("notes"),
   bagNumber: integer("bag_number"),
+  depopUrl: text("depop_url"),
+  vintedUrl: text("vinted_url"),
+  poshmarkUrl: text("poshmark_url"),
+  ebayUrl: text("ebay_url"),
 });
 
 export const insertListingSchema = createInsertSchema(listings).omit({ id: true, createdAt: true });

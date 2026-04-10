@@ -45,6 +45,12 @@ export default function NewListing() {
   const [costPrice, setCostPrice] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
+  // Modes
+  const [mode, setMode] = useState<"single"|"depop"|"batch">("single");
+  const [depopUrl, setDepopUrl] = useState("");
+  const [batching, setBatching] = useState(false);
+  const [batchCount, setBatchCount] = useState(0);
+
   // Save state
   const [saving, setSaving] = useState(false);
   const [savedBag, setSavedBag] = useState<number | null>(null);
@@ -58,6 +64,59 @@ export default function NewListing() {
   }, [images.length]);
 
   const removeImage = (i: number) => setImages(prev => prev.filter((_, idx) => idx !== i));
+
+  // DEPOP IMPORT
+  const handleDepopImport = async () => {
+    if (!depopUrl.includes("depop.com")) return toast({ title: "Valid Depop URL required" });
+    setStep("analyzing");
+    try {
+      const res = await apiRequest("POST", "/api/depop/import", { url: depopUrl, costPrice: Number(costPrice) || 0 });
+      const saved = await res.json();
+      setSavedBag(saved.bagNumber);
+      setStep("saved");
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+    } catch (e: any) {
+      toast({ title: "Import failed", description: e.message, variant: "destructive" });
+      setStep("input");
+    }
+  };
+
+  // BATCH MAGIC IMPORT
+  const handleBatchMagic = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setBatching(true);
+    setStep("analyzing");
+    try {
+      const formData = new FormData();
+      Array.from(files).slice(0, 20).forEach(f => formData.append("images", f));
+      const res = await fetch("/api/ai/batch-source", { method: "POST", body: formData, headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setBatchCount(data.count || 0);
+      toast({ title: `Successfully batched ${data.count} items!` });
+      setStep("saved");
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+    } catch (e: any) {
+      toast({ title: "Batch failed", description: e.message, variant: "destructive" });
+      setStep("input");
+    } finally {
+      setBatching(false);
+    }
+  };
+
+  // BACKGROUND UPLOAD
+  const handleBackgroundUpload = async (file: File) => {
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/user/background", { method: "POST", body: fd, headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      toast({ title: "Background saved!" });
+    } catch(e: any) {
+      toast({ title: "Failed to upload bg", description: e.message, variant: "destructive" });
+    }
+  };
 
   // STEP 1 → 2: Analyze
   const analyze = async () => {
@@ -174,66 +233,125 @@ export default function NewListing() {
           ══════════════════════════════════════ */}
           {step === "input" && (
             <>
-              {/* Image drop zone */}
-              <div
-                className={`rounded-3xl border-2 border-dashed cursor-pointer overflow-hidden transition-all duration-200 ${
-                  images.length ? "border-primary/40 bg-primary/3" : "border-border/60 hover:border-primary/40 hover:bg-muted/20"
-                }`}
-                onClick={() => fileRef.current?.click()}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.preventDefault(); addImages(e.dataTransfer.files); }}
-              >
-                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
-                  onChange={e => addImages(e.target.files)} />
-                {images.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-14 gap-3">
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center float"
-                      style={{ background: "linear-gradient(135deg, hsl(250 80% 65% / 0.25), hsl(195 80% 60% / 0.25))" }}>
-                      <Camera size={26} className="text-primary/50" />
-                    </div>
-                    <p className="text-sm font-medium">Drop photos here</p>
-                    <p className="text-xs text-muted-foreground">AI identifies brand, size, condition — up to 8 photos</p>
-                  </div>
-                ) : (
-                  <div className="p-4 grid grid-cols-4 gap-3">
-                    {images.map((img, i) => (
-                      <div key={i} className="relative aspect-square rounded-2xl overflow-hidden group">
-                        <img src={img.preview} alt="" className="w-full h-full object-cover" />
-                        <button onClick={e => { e.stopPropagation(); removeImage(i); }}
-                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                          <X size={11} />
-                        </button>
+              {/* Mode Selector */}
+              <div className="flex bg-muted/30 p-1 rounded-2xl mb-4">
+                <button onClick={() => setMode("single")} className={`flex-1 text-xs font-semibold py-2.5 rounded-xl transition-all ${mode==='single' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"}`}>Manual</button>
+                <button onClick={() => setMode("depop")} className={`flex-1 text-xs font-semibold py-2.5 rounded-xl transition-all ${mode==='depop' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"}`}>Depop URL</button>
+                <button onClick={() => setMode("batch")} className={`flex-1 text-xs font-semibold py-2.5 rounded-xl transition-all ${mode==='batch' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"}`}>Batch Magic ⚡️</button>
+              </div>
+
+              {/* SINGLE MODE */}
+              {mode === "single" && (
+                <>
+                  <div
+                    className={`rounded-3xl border-2 border-dashed cursor-pointer overflow-hidden transition-all duration-200 ${
+                      images.length ? "border-primary/40 bg-primary/3" : "border-border/60 hover:border-primary/40 hover:bg-muted/20"
+                    }`}
+                    onClick={() => fileRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); addImages(e.dataTransfer.files); }}
+                  >
+                    <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => addImages(e.target.files)} />
+                    {images.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-14 gap-3">
+                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center float"
+                          style={{ background: "linear-gradient(135deg, hsl(250 80% 65% / 0.25), hsl(195 80% 60% / 0.25))" }}>
+                          <Camera size={26} className="text-primary/50" />
+                        </div>
+                        <p className="text-sm font-medium">Drop photos here</p>
+                        <p className="text-xs text-muted-foreground">AI identifies brand, size, condition — up to 8 photos</p>
                       </div>
-                    ))}
-                    {images.length < 8 && (
-                      <div className="aspect-square rounded-2xl border-2 border-dashed border-border/50 flex items-center justify-center text-muted-foreground hover:border-primary/40 transition-colors">
-                        <Plus size={18} />
+                    ) : (
+                      <div className="p-4 grid grid-cols-4 gap-3">
+                        {images.map((img, i) => (
+                          <div key={i} className="relative aspect-square rounded-2xl overflow-hidden group">
+                            <img src={img.preview} alt="" className="w-full h-full object-cover" />
+                            <button onClick={e => { e.stopPropagation(); removeImage(i); }}
+                              className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                              <X size={11} />
+                            </button>
+                          </div>
+                        ))}
+                        {images.length < 8 && (
+                          <div className="aspect-square rounded-2xl border-2 border-dashed border-border/50 flex items-center justify-center text-muted-foreground hover:border-primary/40 transition-colors">
+                            <Plus size={18} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Description */}
-              <Textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && e.metaKey) analyze(); }}
-                placeholder="Describe the item — brand, size, condition, color, anything you know. Even just 'vintage levi's jacket M' is enough."
-                rows={3}
-                className="rounded-2xl border-border/60 bg-background/50 resize-none text-sm"
-              />
+                  <Textarea
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && e.metaKey) analyze(); }}
+                    placeholder="Describe the item — brand, size, condition, color, anything you know."
+                    rows={3}
+                    className="rounded-2xl border-border/60 bg-background/50 resize-none text-sm mt-4"
+                  />
 
-              <Button
-                onClick={analyze}
-                disabled={!description.trim() && images.length === 0}
-                className="w-full h-12 rounded-2xl text-sm font-medium gap-2"
-                style={{ background: "linear-gradient(135deg, hsl(250 80% 58%), hsl(195 80% 52%), hsl(280 70% 58%))" }}
-              >
-                <Sparkles size={16} />
-                Analyze & Get Prices
-                <ArrowRight size={14} className="ml-auto" />
-              </Button>
+                  <Button
+                    onClick={analyze}
+                    disabled={!description.trim() && images.length === 0}
+                    className="w-full h-12 rounded-2xl text-sm font-medium gap-2 mt-4"
+                    style={{ background: "linear-gradient(135deg, hsl(250 80% 58%), hsl(195 80% 52%), hsl(280 70% 58%))" }}
+                  >
+                    <Sparkles size={16} />
+                    Analyze & Get Prices
+                    <ArrowRight size={14} className="ml-auto" />
+                  </Button>
+                </>
+              )}
+
+              {/* DEPOP IMPORT MODE */}
+              {mode === "depop" && (
+                <div className="space-y-4">
+                  <div className="glass-card rounded-3xl p-6 mb-4 border border-border/50">
+                    <h3 className="font-semibold text-sm mb-2">Import from Master Listing</h3>
+                    <p className="text-xs text-muted-foreground mb-4">Paste your exact Depop link to automatically pull images, title, description, and price seamlessly into your Multi-Platform Sourcing Hub.</p>
+                    <Input 
+                      placeholder="https://www.depop.com/products/..." 
+                      value={depopUrl} onChange={e => setDepopUrl(e.target.value)}
+                      className="rounded-xl h-11 border-border/50"
+                    />
+                  </div>
+                  <Button onClick={handleDepopImport} disabled={!depopUrl} className="w-full h-12 rounded-2xl text-sm font-medium gap-2" style={{ background: PLATFORM_COLORS.depop }}>
+                    <ArrowRight size={16} />
+                    Sync from Depop
+                  </Button>
+                </div>
+              )}
+
+              {/* BATCH MAGIC MODE */}
+              {mode === "batch" && (
+                <div className="space-y-4">
+                  <div className="glass-card rounded-3xl p-6 text-center border-2 border-primary/20 border-dashed">
+                    <div className="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center float mb-4"
+                      style={{ background: "linear-gradient(135deg, hsl(250 80% 65%), hsl(280 70% 65%))" }}>
+                      <Sparkles size={26} className="text-white" />
+                    </div>
+                    <h3 className="font-semibold text-sm">Batch AI Generator</h3>
+                    <p className="text-xs text-muted-foreground mt-1 mb-4">Select up to 20 raw clothing photos. We will remove the background, place them on your trademark background, crop them perfectly, and create AI draft listings for each!</p>
+                    
+                    <Button onClick={() => fileRef.current?.click()} className="h-10 rounded-xl px-10">Select Photos (Max 20)</Button>
+                    <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => handleBatchMagic(e.target.files)} />
+                  </div>
+
+                  <div className="glass-card rounded-2xl p-4 bg-muted/10 border border-border/50">
+                    <p className="text-xs font-semibold mb-2 text-muted-foreground uppercase">Settings</p>
+                    <label className="text-xs font-medium cursor-pointer flex gap-3 items-center">
+                       <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center border border-border shrink-0">🖼️</div>
+                       <div>
+                         <p>Update Custom Background</p>
+                         <p className="text-[10px] text-muted-foreground">Upload your trademark background pattern</p>
+                       </div>
+                       <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleBackgroundUpload(e.target.files[0])} />
+                    </label>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -247,11 +365,17 @@ export default function NewListing() {
                 <Sparkles size={24} className="text-white" />
               </div>
               <div>
-                <p className="font-semibold text-sm mb-1">Analyzing your item...</p>
-                <p className="text-xs text-muted-foreground">Checking live prices on Vinted · Building descriptions for Depop, Vinted, Poshmark, eBay</p>
+                <p className="font-semibold text-sm mb-1">{batching ? "Processing Batch Image Magic..." : "Analyzing your item..."}</p>
+                <p className="text-xs text-muted-foreground">{batching ? "Stripping backgrounds, positioning on template, generating drafts..." : "Checking prices & fetching details..."}</p>
               </div>
               <div className="w-full space-y-2">
-                {["Identifying brand & details", "Checking live market prices", "Writing platform descriptions"].map((label, i) => (
+                {batching ? ["Removing backgrounds from photos", "Compositing custom patterns", "Generating descriptions via AI"].map((label, i) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
+                    <Skeleton className="flex-1 h-3 skeleton" style={{ animationDelay: `${i * 0.2}s` }} />
+                    <p className="text-xs text-muted-foreground shrink-0">{label}</p>
+                  </div>
+                )) : ["Identifying brand & details", "Checking live market prices", "Building descriptions"].map((label, i) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
                     <Skeleton className="flex-1 h-3 skeleton" style={{ animationDelay: `${i * 0.2}s` }} />
@@ -445,7 +569,7 @@ export default function NewListing() {
             </>
           )}
 
-          {/* ══════════════════════════════════════
+              {/* ══════════════════════════════════════
               STEP 4: SAVED
           ══════════════════════════════════════ */}
           {step === "saved" && (
@@ -455,7 +579,7 @@ export default function NewListing() {
                 <Check size={32} className="text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold mb-1">Saved to inventory!</h2>
+                <h2 className="text-lg font-semibold mb-1">{batching ? `Successfully created ${batchCount} Items!` : "Saved to inventory!"}</h2>
                 {savedBag && (
                   <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2 mt-2">
                     <Package size={16} className="text-primary" />

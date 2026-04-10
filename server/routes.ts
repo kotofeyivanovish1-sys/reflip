@@ -10,6 +10,8 @@ import path from "path";
 import crypto from "crypto";
 import sharp from "sharp";
 import { searchAllPlatforms, fetchPoshmarkListing } from "./marketSearch";
+import { removeBackground, compositeImage } from "./imageProcessor";
+import AdmZip from "adm-zip";
 
 // Resize image to max 1200px and compress as JPEG — keeps Anthropic request under limits
 async function prepareImage(filePath: string): Promise<{ data: string; mime: "image/jpeg" }> {
@@ -117,6 +119,27 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch { res.status(401).json({ error: "Invalid token" }); }
   });
 
+  // === USER SETTINGS ===
+  app.post("/api/user/background", upload.single("image"), (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const file = req.file;
+      if (!file) return void res.status(400).json({ error: "No image provided" });
+      const uploadsDir = path.resolve(process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : ".", "uploads");
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      const ext = path.extname(file.originalname) || ".jpg";
+      const filename = `bg_${userId}_${Date.now()}${ext}`;
+      const targetPath = path.join(uploadsDir, filename);
+      fs.renameSync(file.path, targetPath);
+      const url = `/uploads/${filename}`;
+      storage.updateUserBackground(userId, url);
+      res.json({ success: true, customBackground: url });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // === LISTINGS ===
   app.get("/api/listings", (req, res) => {
     const userId = requireAuth(req, res);
@@ -169,6 +192,44 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ success: true });
   });
 
+  // === DOWNLOAD IMAGES ZIP ===
+  app.get("/api/listings/:id/download-images", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const item = storage.getListing(Number(req.params.id), userId);
+      if (!item || !item.imageUrl) return void res.status(404).json({ error: "No images found for this listing." });
+      
+      let images: string[];
+      try {
+        images = JSON.parse(item.imageUrl);
+      } catch {
+        images = [item.imageUrl];
+      }
+
+      const zip = new AdmZip();
+      
+      const uploadsDir = path.resolve(process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : ".", "uploads");
+      
+      for (let i = 0; i < images.length; i++) {
+        let imgPath = images[i];
+        if (imgPath.startsWith("/uploads/")) {
+          const localPath = path.join(uploadsDir, imgPath.replace("/uploads/", ""));
+          if (fs.existsSync(localPath)) {
+            zip.addLocalFile(localPath, "", `listing_${item.id}_image_${i + 1}${path.extname(localPath)}`);
+          }
+        }
+      }
+      
+      const zipBuffer = zip.toBuffer();
+      res.set("Content-Type", "application/zip");
+      res.set("Content-Disposition", `attachment; filename=ReFlip_Listing_${item.id}_Images.zip`);
+      res.send(zipBuffer);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // === DASHBOARD STATS ===
   app.get("/api/stats/dashboard", (req, res) => {
     const userId = requireAuth(req, res);
@@ -181,6 +242,95 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const userId = requireAuth(req, res);
     if (!userId) return;
     res.json(storage.getPlatformAnalytics(userId));
+  });
+
+  // === AI: BATCH SOURCING MAGIC ===
+  app.post("/api/ai/batch-source", upload.array("images", 20), async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    
+    // Fast response that delegates processing to background or waits (here we wait, as Railway timeouts are ~60s)
+    const files = (req.files as Express.Multer.File[]) || [];
+    if (files.length === 0) return void res.status(400).json({ error: "No images provided" });
+
+    const userEmail = Buffer.from(req.headers.authorization!.replace("Bearer ", ""), "base64").toString().split(":")[1];
+    const user = storage.getUserByEmail(userEmail);
+    const customBg = user?.customBackground;
+    
+    const uploadsDir = path.resolve(process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : ".", "uploads");
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+    try {
+      const client = getAI();
+      const results = [];
+
+      // Process sequentially to avoid memory overload / rate limits
+      for (const file of files) {
+        let finalBuffer: Buffer;
+        try {
+          if (customBg && process.env.FAL_KEY) {
+            // 1. Remove background
+            const cleanFg = await removeBackground(fs.readFileSync(file.path));
+            // 2. Composite onto custom background
+            const absBg = customBg.startsWith("/uploads/") ? path.join(uploadsDir, customBg.replace("/uploads/", "")) : customBg;
+            finalBuffer = await compositeImage(cleanFg, absBg, 0.85);
+          } else {
+            // Fallback just use the image
+            finalBuffer = fs.readFileSync(file.path);
+          }
+        } catch (e: any) {
+          console.error("Image processing error:", e);
+          finalBuffer = fs.readFileSync(file.path); // Fallback
+        }
+
+        const ext = "jpg";
+        const filename = `batch_${userId}_${Date.now()}_${Math.floor(Math.random()*1000)}.${ext}`;
+        const targetPath = path.join(uploadsDir, filename);
+        fs.writeFileSync(targetPath, finalBuffer);
+        const savedUrl = `/uploads/${filename}`;
+        
+        // Resize for AI
+        const aiBuf = await sharp(finalBuffer).resize(600, 600, {fit: "inside"}).jpeg({quality: 70}).toBuffer();
+
+        // 3. AI Text Gen
+        const prompt = "You are a professional vintage/clothing reseller. Look at this clothing item and generate a JSON with its details: title (trendy, max 50 chars), description (detailed, uses bullet points for condition/details), suggested listedPrice (number), brand (if visible or guess), size (if visible or empty string), and category (Shirts/Pants/Outerwear/Other/Accessories). Respond ONLY in valid JSON.";
+        const message = await client.messages.create({
+          model: "claude-3-haiku-20240307", // use Haiku for fast batching
+          max_tokens: 300,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: aiBuf.toString("base64") } },
+                { type: "text", text: prompt }
+              ]
+            }
+          ]
+        });
+
+        const text = message.content[0].type === "text" ? message.content[0].text : "";
+        const parsed = safeParseJSON(text) || { title: "Draft Item", description: "Batch imported item", listedPrice: 20, brand: null, size: null, category: "Other" };
+
+        const listing = storage.createListing({
+          title: parsed.title || "Draft Item",
+          description: parsed.description || "—",
+          brand: parsed.brand || null,
+          size: parsed.size || null,
+          condition: "good",
+          category: parsed.category || "Other",
+          imageUrl: JSON.stringify([savedUrl]),
+          costPrice: 0,
+          listedPrice: parsed.listedPrice || null,
+          platform: "depop",
+          status: "draft",
+        } as any, userId);
+
+        results.push(listing);
+      }
+      res.json({ success: true, count: results.length, listings: results });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // === AI: QUICK LISTING ===
@@ -732,6 +882,81 @@ Respond in JSON:
       } as any, userId);
 
       res.json(listing);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === IMPORT DEPOP LISTING ===
+  app.post("/api/depop/import", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const { url, costPrice } = req.body;
+    if (!url) return void res.status(400).json({ error: "Depop listing URL required" });
+    try {
+      const { fetchDepopListing } = await import("./marketSearch");
+      const data = await fetchDepopListing(url);
+      if (!data) return void res.status(404).json({ error: "Could not fetch listing from Depop" });
+
+      const imageUrl = data.images.length > 0 ? JSON.stringify(data.images) : null;
+      const listing = storage.createListing({
+        title: data.title,
+        description: data.description,
+        brand: data.brand,
+        size: data.size,
+        condition: data.condition || "good",
+        category: data.category || "Other",
+        imageUrl,
+        costPrice: Number(costPrice) || 0,
+        listedPrice: data.price || null,
+        platform: "depop",
+        depopUrl: url,
+        status: "active",
+      } as any, userId);
+
+      res.json(listing);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === AUTO-LINK CROSS PLATFORM ===
+  app.post("/api/listings/:id/auto-link", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const listing = storage.getListing(Number(req.params.id), userId);
+      if (!listing) return void res.status(404).json({ error: "Listing not found" });
+
+      // We search other platforms using the exact title
+      // Usually, query without quotes is better for Vinted/Poshmark, then we filter by exact match
+      const marketData = await searchAllPlatforms(listing.title);
+      
+      const updates: any = {};
+      const t = listing.title.toLowerCase().trim();
+      
+      for (const results of marketData) {
+        if (results.platform === "vinted" && !listing.vintedUrl) {
+           const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
+           if (match && match.url) updates.vintedUrl = match.url;
+        }
+        if (results.platform === "poshmark" && !listing.poshmarkUrl) {
+           const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
+           // Fallback to poshmark listing if url missing but id present
+           if (match && match.url) updates.poshmarkUrl = match.url;
+        }
+        if (results.platform === "ebay" && !listing.ebayUrl) {
+           const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
+           if (match && match.url) updates.ebayUrl = match.url;
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const updatedListing = storage.updateListing(Number(req.params.id), updates, userId);
+        res.json({ success: true, linked: Object.keys(updates), listing: updatedListing });
+      } else {
+        res.json({ success: true, linked: [], message: "No exact matches found on other platforms." });
+      }
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

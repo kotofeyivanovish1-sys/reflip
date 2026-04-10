@@ -159,6 +159,23 @@ export default function Listings() {
     },
   });
 
+  const autoLink = async (id: number) => {
+    toast({ title: "Auto-Linking...", description: "Searching multiple platforms for exact matches. This may take 5-15s." });
+    try {
+      const res = await apiRequest("POST", `/api/listings/${id}/auto-link`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || data.error);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      if (data.linked.length > 0) {
+        toast({ title: "Links found!", description: `Found matches for: ${data.linked.join(", ")}` });
+      } else {
+        toast({ title: "No matches found." });
+      }
+    } catch(e: any) {
+      toast({ title: "Auto-link failed", description: e.message, variant: "destructive" });
+    }
+  };
+
   const getAISuggestions = async (id: number) => {
     setSuggestId(id);
     setSuggestLoading(true);
@@ -262,6 +279,7 @@ export default function Listings() {
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
                 onFetchPhotos={() => { setPhotoFetchId(listing.id); setPoshmarkUrl(""); }}
+                onAutoLink={() => autoLink(listing.id)}
               />
             ))}
           </div>
@@ -554,9 +572,10 @@ interface RowProps {
   onExport: () => void;
   onQR: () => void;
   onFetchPhotos: () => void;
+  onAutoLink: () => void;
 }
 
-function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos }: RowProps) {
+function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos, onAutoLink }: RowProps) {
   const status = listing.status;
   const bagNum = (listing as any).bagNumber;
   const images = getListingImages(listing);
@@ -604,6 +623,14 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
                 +${(listing.soldPrice - listing.costPrice).toFixed(0)} NET
               </span>
             )}
+            
+            {/* PLATFORM LINKS PREVIEW */}
+            <div className="flex gap-1 ml-auto shrink-0">
+               {(listing as any).depopUrl && <a href={(listing as any).depopUrl} target="_blank" rel="noreferrer" title="Depop link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.depop}}>d</a>}
+               {(listing as any).vintedUrl && <a href={(listing as any).vintedUrl} target="_blank" rel="noreferrer" title="Vinted link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.vinted}}>v</a>}
+               {(listing as any).poshmarkUrl && <a href={(listing as any).poshmarkUrl} target="_blank" rel="noreferrer" title="Poshmark link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.poshmark}}>p</a>}
+               {(listing as any).ebayUrl && <a href={(listing as any).ebayUrl} target="_blank" rel="noreferrer" title="eBay link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.ebay}}>e</a>}
+            </div>
           </div>
         </div>
 
@@ -664,8 +691,17 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
                   <ExternalLink size={12} /> Export / Crosslist
                 </DropdownMenuItem>
               )}
+              {status === "active" && (
+                <DropdownMenuItem onClick={onAutoLink} className="gap-2 text-xs">
+                  <Sparkles size={12} className="text-[#e94365]" /> Auto-Link Platforms
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onFetchPhotos} className="gap-2 text-xs">
-                <ImagePlus size={12} /> Fetch photos
+                <ImagePlus size={12} /> Fetch photos (Poshmark)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => window.open(`/api/listings/${listing.id}/download-images`, '_blank')} className="gap-2 text-xs">
+                <Download size={12} /> Download Photos (ZIP)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
