@@ -71,15 +71,15 @@ export default function Analytics() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center gap-3 px-6 py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
+      <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
         <SidebarTrigger />
         <div>
-          <h1 className="text-lg font-semibold">Analytics</h1>
-          <p className="text-xs text-muted-foreground">Performance by platform</p>
+          <h1 className="text-base sm:text-lg font-semibold">Analytics</h1>
+          <p className="text-[11px] sm:text-xs text-muted-foreground">Performance by platform</p>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
         {/* Platform cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {isLoading ? (
