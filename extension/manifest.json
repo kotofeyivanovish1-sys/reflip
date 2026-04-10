@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ReFlip Sync",
   "version": "1.0.0",
-  "description": "Syncs your Depop, Poshmark, and eBay listings to ReFlip",
+  "description": "Syncs your Depop, Poshmark, eBay, and Vinted listings to ReFlip",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://www.depop.com/*",
@@ -10,7 +10,22 @@
     "https://poshmark.com/*",
     "https://www.poshmark.com/*",
     "https://www.ebay.com/*",
+    "https://www.ebay.co.uk/*",
+    "https://www.ebay.de/*",
+    "https://www.ebay.fr/*",
+    "https://www.ebay.com.au/*",
     "https://www.vinted.com/*",
+    "https://www.vinted.fr/*",
+    "https://www.vinted.de/*",
+    "https://www.vinted.co.uk/*",
+    "https://www.vinted.es/*",
+    "https://www.vinted.it/*",
+    "https://www.vinted.pl/*",
+    "https://www.vinted.lt/*",
+    "https://www.vinted.nl/*",
+    "https://www.vinted.be/*",
+    "https://www.vinted.pt/*",
+    "https://www.vinted.cz/*",
     "https://*.railway.app/*",
     "http://localhost/*"
   ],
@@ -23,6 +38,16 @@
     {
       "matches": ["https://poshmark.com/*", "https://www.poshmark.com/*"],
       "js": ["content-poshmark.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.ebay.com/*", "https://www.ebay.co.uk/*", "https://www.ebay.de/*", "https://www.ebay.fr/*", "https://www.ebay.com.au/*"],
+      "js": ["content-ebay.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.vinted.com/*", "https://www.vinted.fr/*", "https://www.vinted.de/*", "https://www.vinted.co.uk/*", "https://www.vinted.es/*", "https://www.vinted.it/*", "https://www.vinted.pl/*", "https://www.vinted.lt/*", "https://www.vinted.nl/*", "https://www.vinted.be/*", "https://www.vinted.pt/*", "https://www.vinted.cz/*"],
+      "js": ["content-vinted.js"],
       "run_at": "document_idle"
     }
   ],
