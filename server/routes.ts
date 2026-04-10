@@ -350,17 +350,51 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
       });
 
       let marketContext = "";
+      let rawMarketData: any[] = [];
       try {
         const searchQuery = description || "clothing item";
+        console.log(`[market-search] Searching for: "${searchQuery.slice(0, 50)}"`);
         const marketData = await searchAllPlatforms(searchQuery.slice(0, 50));
+        rawMarketData = marketData;
         const active = marketData.filter(m => m.avgPrice > 0);
+
         if (active.length > 0) {
-          marketContext = "\n\nREAL LIVE MARKET DATA:\n" + active.map(m =>
-            `${m.platform.toUpperCase()}: avg $${m.avgPrice}, range $${m.minPrice}-$${m.maxPrice} (${m.listings.length} listings)`
-          ).join("\n");
-          contentParts[contentParts.length - 1].text += marketContext + "\n\nUse this real data to set accurate prices.";
+          marketContext = "\n\nREAL LIVE MARKET DATA FROM PLATFORMS:\n" + active.map(m => {
+            const isEbay = m.platform === "ebay";
+            const priceType = isEbay ? "ACTUAL SOLD PRICES (real completed sales)" : "ACTIVE ASKING PRICES (real sale price is usually 15-25% lower)";
+            let line = `${m.platform.toUpperCase()} — ${priceType}:\n`;
+            line += `  avg $${m.avgPrice}, median $${m.medianPrice}, range $${m.minPrice}-$${m.maxPrice}`;
+            line += isEbay ? ` (${m.soldCount} sold items)` : ` (${m.listings.length} active listings)`;
+            if (m.sampleTitles.length > 0) {
+              line += `\n  examples: ${m.sampleTitles.slice(0, 3).map(t => `"${t.slice(0, 50)}"`).join(", ")}`;
+            }
+            return line;
+          }).join("\n\n");
+
+          marketContext += `\n\nPRICING INSTRUCTIONS:
+- eBay sold prices are the MOST RELIABLE indicator of real market value
+- Active listing prices on Depop/Vinted/Poshmark are 15-25% higher than actual sale prices
+- Factor in platform fees when setting list price:
+  * Depop: ~13% fee, so list higher to net your target
+  * Vinted: 0% seller fee, list price = what you get
+  * Poshmark: 20% fee on sales over $15, so list higher
+  * eBay: ~13-15% total fees (listing + payment)
+- Price to SELL, not to sit. Better to sell at fair price than list too high
+- Set each platform price independently based on that platform's market + fees`;
+
+          contentParts[contentParts.length - 1].text += marketContext;
+          console.log(`[market-search] Found data: ${active.map(m => `${m.platform}=$${m.avgPrice}`).join(", ")}`);
+        } else {
+          console.log("[market-search] No market data returned from any platform");
+          contentParts[contentParts.length - 1].text += `\n\nNo live market data available. Use your knowledge of typical resale prices for this type of item. Price realistically based on brand, condition, and current demand. Factor in platform fees:
+- Depop: ~13% fee
+- Vinted: 0% seller fee
+- Poshmark: 20% fee
+- eBay: ~13-15% fees`;
         }
-      } catch {}
+      } catch (e: any) {
+        console.error("[market-search] Error:", e.message);
+      }
 
       const message = await client.messages.create({
         model: "claude-sonnet-4-6",
@@ -373,6 +407,18 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
       if (!parsed) return void res.status(500).json({ error: "AI response parsing failed — please try again." });
       // Attach saved image URLs so frontend can store them with the listing
       if (savedImageUrls.length > 0) parsed._imageUrls = savedImageUrls;
+      // Attach raw market data so frontend can display it
+      if (rawMarketData.length > 0) {
+        parsed._marketData = rawMarketData.filter(m => m.avgPrice > 0).map(m => ({
+          platform: m.platform,
+          avgPrice: m.avgPrice,
+          medianPrice: m.medianPrice,
+          minPrice: m.minPrice,
+          maxPrice: m.maxPrice,
+          count: m.platform === "ebay" ? m.soldCount : m.listings.length,
+          type: m.platform === "ebay" ? "sold" : "active",
+        }));
+      }
       res.json(parsed);
     } catch (e: any) {
       for (const f of (req.files as any[]) || []) try { fs.unlinkSync(f.path); } catch {}
