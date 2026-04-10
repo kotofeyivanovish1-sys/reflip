@@ -6,7 +6,7 @@ import { TrendingUp, DollarSign, Package, Tag, ArrowUpRight, RefreshCw, Zap, Ale
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const PRIORITY_COLORS = {
   high: "text-red-500 bg-red-50 dark:bg-red-900/20",
@@ -65,10 +65,6 @@ export default function Dashboard() {
       setRecommendations(data);
     } catch {} finally { setRecsLoading(false); }
   };
-
-  useEffect(() => {
-    loadRecs();
-  }, []);
 
   return (
     <div className="flex flex-col h-full">

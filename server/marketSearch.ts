@@ -344,10 +344,19 @@ export async function fetchPoshmarkListing(listingUrl: string): Promise<ScrapedL
 
     // Fallback: try to find og:image meta tags if no images from JSON
     if (images.length === 0) {
-      const ogRegex = /<meta\s+property="og:image"\s+content="([^"]+)"/g;
+      const ogRegex = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/gi;
       let ogMatch;
       while ((ogMatch = ogRegex.exec(html)) !== null) {
         if (ogMatch[1] && !images.includes(ogMatch[1])) images.push(ogMatch[1]);
+      }
+    }
+    // Fallback: find Poshmark CDN image URLs directly in HTML
+    if (images.length === 0) {
+      const cdnRegex = /https:\/\/di2ponv0v5otw\.cloudfront\.net\/[^\s"']+/g;
+      let cdnMatch;
+      while ((cdnMatch = cdnRegex.exec(html)) !== null) {
+        const clean = cdnMatch[0].replace(/&amp;/g, "&");
+        if (!images.includes(clean)) images.push(clean);
       }
     }
 
@@ -389,43 +398,111 @@ export async function fetchDepopListing(listingUrl: string): Promise<ScrapedList
     const slug = slugMatch ? slugMatch[1] : listingUrl.replace(/\/$/, "").split('/').pop();
     if (!slug) return null;
 
+    // Try API first
     const prodUrl = `https://webapi.depop.com/api/v2/products/${slug}/`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(prodUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-        "depop-user-country": "US",
-        "depop-user-currency": "USD"
-      }
-    });
-    clearTimeout(timer);
-    
-    if (!res.ok) return null;
-    const data = await res.json();
-    
+
+    let apiData: any = null;
+    try {
+      const res = await fetch(prodUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "application/json",
+          "depop-user-country": "US",
+          "depop-user-currency": "USD"
+        }
+      });
+      clearTimeout(timer);
+      if (res.ok) apiData = await res.json();
+    } catch { clearTimeout(timer); }
+
     const images: string[] = [];
-    if (Array.isArray(data.pictures)) {
-      for (const p of data.pictures) {
-        if (Array.isArray(p) && p.length > 0) {
-          images.push(p[p.length - 1].url || p[0].url);
-        } else if (p.url) {
-          images.push(p.url);
-        } else if (typeof p === "string") {
-          images.push(p);
+
+    if (apiData) {
+      // Extract images from API response
+      const pics = apiData.pictures || apiData.images || apiData.preview?.images || [];
+      if (Array.isArray(pics)) {
+        for (const p of pics) {
+          if (Array.isArray(p) && p.length > 0) {
+            const best = p[p.length - 1];
+            const imgUrl = typeof best === "string" ? best : best.url;
+            if (imgUrl) images.push(imgUrl);
+          } else if (p.url) {
+            images.push(p.url);
+          } else if (typeof p === "string" && p.startsWith("http")) {
+            images.push(p);
+          }
         }
       }
     }
-    
+
+    // Fallback: scrape the HTML product page for og:image and other image tags
+    if (images.length === 0) {
+      const htmlCtrl = new AbortController();
+      const htmlTimer = setTimeout(() => htmlCtrl.abort(), 10000);
+      try {
+        const pageUrl = `https://www.depop.com/products/${slug}/`;
+        const htmlRes = await fetch(pageUrl, {
+          signal: htmlCtrl.signal,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+          redirect: "follow",
+        });
+        clearTimeout(htmlTimer);
+        if (htmlRes.ok) {
+          const html = await htmlRes.text();
+          // Try __NEXT_DATA__ first
+          const nextData = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+          if (nextData) {
+            try {
+              const nd = JSON.parse(nextData[1]);
+              const product = nd?.props?.pageProps?.product || nd?.props?.pageProps?.data?.product;
+              if (product?.pictures) {
+                for (const p of product.pictures) {
+                  if (Array.isArray(p) && p.length > 0) {
+                    const best = p[p.length - 1];
+                    const imgUrl = typeof best === "string" ? best : best.url;
+                    if (imgUrl) images.push(imgUrl);
+                  } else if (p.url) {
+                    images.push(p.url);
+                  }
+                }
+              }
+            } catch {}
+          }
+          // Fallback: og:image meta tags
+          if (images.length === 0) {
+            const ogRegex = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/gi;
+            let m;
+            while ((m = ogRegex.exec(html)) !== null) {
+              if (m[1] && !images.includes(m[1])) images.push(m[1]);
+            }
+          }
+          // Fallback: any large product images in srcset or src
+          if (images.length === 0) {
+            const imgRegex = /https:\/\/media-photos\.depop\.com\/[^\s"']+/g;
+            let m;
+            while ((m = imgRegex.exec(html)) !== null) {
+              const clean = m[0].replace(/&amp;/g, "&");
+              if (!images.includes(clean)) images.push(clean);
+            }
+          }
+        }
+      } catch { clearTimeout(htmlTimer); }
+    }
+
     return {
-      title: data.slug || "",
-      description: data.description || "",
-      price: parseFloat(data.price?.priceAmount || "0"),
-      brand: data.brand?.name || data.brand || null,
-      size: data.size?.name || data.size || null,
-      condition: data.condition || null,
-      category: data.category?.name || data.category || null,
+      title: apiData?.slug || apiData?.description?.slice(0, 80) || slug || "",
+      description: apiData?.description || "",
+      price: parseFloat(apiData?.price?.priceAmount || apiData?.preview_price_data?.priceAmount || "0"),
+      brand: apiData?.brand?.name || apiData?.brand || null,
+      size: apiData?.size?.name || apiData?.size || null,
+      condition: apiData?.condition || null,
+      category: apiData?.category?.name || apiData?.category || null,
       images,
       url: listingUrl
     };

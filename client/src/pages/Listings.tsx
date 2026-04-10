@@ -447,12 +447,12 @@ export default function Listings() {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Paste the Depop or Poshmark listing URL to pull photos into this listing.
+              Paste the listing URL from any platform (Poshmark, Depop, etc.) to pull photos.
             </p>
             <Input
               value={fetchUrl}
               onChange={e => setFetchUrl(e.target.value)}
-              placeholder="https://depop.com/products/..."
+              placeholder="https://poshmark.com/listing/... or https://depop.com/products/..."
               className="rounded-xl text-sm"
               autoFocus
             />
