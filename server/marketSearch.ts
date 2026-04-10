@@ -420,10 +420,20 @@ export async function fetchDepopListing(listingUrl: string): Promise<ScrapedList
     const res = await fetch(prodUrl, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "Accept": "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.depop.com/",
+        "Origin": "https://www.depop.com",
         "depop-user-country": "US",
-        "depop-user-currency": "USD"
+        "depop-user-currency": "USD",
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+        "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"macOS\""
       }
     });
     clearTimeout(timer);
@@ -460,8 +470,20 @@ export async function fetchDepopListing(listingUrl: string): Promise<ScrapedList
       const htmlRes = await fetch(pageUrl, {
         signal: controller.signal,
         headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Cache-Control": "no-cache",
+          "Pragma": "no-cache",
+          "Sec-Fetch-Site": "none",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-User": "?1",
+          "Sec-Fetch-Dest": "document",
+          "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"macOS\"",
+          "Upgrade-Insecure-Requests": "1",
         },
         redirect: "follow",
       });
@@ -514,6 +536,48 @@ export async function fetchDepopListing(listingUrl: string): Promise<ScrapedList
       }
     } catch (e: any) {
       attempts.push(`HTML page failed: ${e.message}`);
+    }
+  }
+
+  // 3) Try Depop v1 API with mobile user-agent as final fallback
+  if (images.length === 0) {
+    try {
+      const v1Url = `https://webapi.depop.com/api/v1/products/${slug}/`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(v1Url, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+          "Accept": "application/json",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://www.depop.com/",
+        }
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        const pics = data.pictures || data.images || [];
+        if (Array.isArray(pics)) {
+          for (const p of pics) {
+            if (Array.isArray(p) && p.length > 0) {
+              const best = p[p.length - 1];
+              const imgUrl = typeof best === "string" ? best : best.url;
+              if (imgUrl) images.push(imgUrl);
+            } else if (p.url) {
+              images.push(p.url);
+            } else if (typeof p === "string" && p.startsWith("http")) {
+              images.push(p);
+            }
+          }
+        }
+        if (images.length === 0) attempts.push(`v1 API ok but no images (keys: ${Object.keys(data).join(",")})`);
+        if (!apiData) apiData = data;
+      } else {
+        attempts.push(`v1 API returned ${res.status}`);
+      }
+    } catch (e: any) {
+      attempts.push(`v1 API failed: ${e.message}`);
     }
   }
 
