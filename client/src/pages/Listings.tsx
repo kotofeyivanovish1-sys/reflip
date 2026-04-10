@@ -175,42 +175,37 @@ export default function Listings() {
         </Button>
       </header>
 
-      {/* Filter bar — scrollable on mobile */}
-      <div className="px-3 sm:px-5 md:px-6 py-2.5 sm:py-3 border-b border-border/60 overflow-x-auto scrollbar-none">
-        <div className="flex gap-1.5 sm:gap-2 min-w-max">
-          {/* Status filters */}
-          <div className="flex gap-1 items-center">
-            {STATUSES.map(s => (
-              <button key={s} onClick={() => setStatus(s)}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap ${
-                  status === s
-                    ? "bg-foreground text-background"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </button>
-            ))}
-          </div>
+      {/* Filter bar */}
+      <div className="px-3 sm:px-5 md:px-6 py-2.5 sm:py-3 border-b border-border/60 flex flex-col gap-2">
+        {/* Status filters */}
+        <div className="flex gap-1 items-center overflow-x-auto scrollbar-none">
+          {STATUSES.map(s => (
+            <button key={s} onClick={() => setStatus(s)}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap ${
+                status === s
+                  ? "bg-foreground text-background"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
 
-          {/* Divider */}
-          <div className="w-px bg-border/60 mx-1" />
-
-          {/* Platform filters */}
-          <div className="flex gap-1 items-center">
-            {PLATFORMS.map(p => (
-              <button key={p} onClick={() => setPlatform(p)}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  platform === p
-                    ? "bg-foreground text-background"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}>
-                {p !== "all" && (
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PLATFORM_DOT[p] }} />
-                )}
-                {p.charAt(0).toUpperCase() + p.slice(1)}
-              </button>
-            ))}
-          </div>
+        {/* Platform filters */}
+        <div className="flex gap-1 items-center overflow-x-auto scrollbar-none">
+          {PLATFORMS.map(p => (
+            <button key={p} onClick={() => setPlatform(p)}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                platform === p
+                  ? "bg-foreground text-background"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}>
+              {p !== "all" && (
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PLATFORM_DOT[p] }} />
+              )}
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
