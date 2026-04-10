@@ -1,5 +1,4 @@
 import sharp from "sharp";
-import fetch from "node-fetch";
 
 // Fal.ai API for background removal
 const FAL_KEY = process.env.FAL_KEY;
