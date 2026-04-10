@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import sharp from "sharp";
-import { searchAllPlatforms, fetchPoshmarkListing } from "./marketSearch";
+import { searchAllPlatforms, fetchPoshmarkListing, fetchDepopListing } from "./marketSearch";
 import { removeBackground, compositeImage } from "./imageProcessor";
 import AdmZip from "adm-zip";
 
