@@ -834,19 +834,28 @@ Respond in JSON:
     }
   });
 
-  // Fetch photos from Poshmark and attach to an existing listing
-  app.post("/api/listings/:id/fetch-poshmark-photos", async (req, res) => {
+  // Fetch photos from external URL and attach to an existing listing
+  app.post("/api/listings/:id/fetch-photos", async (req, res) => {
     const userId = requireAuth(req, res);
     if (!userId) return;
     const listing = storage.getListing(Number(req.params.id), userId);
     if (!listing) return void res.status(404).json({ error: "Listing not found" });
     const { url } = req.body;
-    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
+    if (!url) return void res.status(400).json({ error: "Poshmark or Depop listing URL required" });
     try {
-      const data = await fetchPoshmarkListing(url);
-      if (!data || data.images.length === 0) {
-        return void res.status(404).json({ error: "No photos found on this Poshmark listing" });
+      let data;
+      if (url.includes("depop.com")) {
+        const d = await fetchDepopListing(url);
+        if (d && d.images) data = d;
+      } else {
+        const d = await fetchPoshmarkListing(url);
+        if (d && d.images) data = d;
       }
+      
+      if (!data || data.images.length === 0) {
+        return void res.status(404).json({ error: "No photos found on this external listing" });
+      }
+      
       // Store images as JSON array in imageUrl field
       const imageUrl = JSON.stringify(data.images);
       const updated = storage.updateListing(Number(req.params.id), { imageUrl } as any, userId);

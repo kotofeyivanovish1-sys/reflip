@@ -40,7 +40,7 @@ export default function Listings() {
   const [qrData, setQrData] = useState<{ bagNumber: number; qrDataUrl: string; label: string } | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
   const [photoFetchId, setPhotoFetchId] = useState<number | null>(null);
-  const [poshmarkUrl, setPoshmarkUrl] = useState("");
+  const [fetchUrl, setFetchUrl] = useState("");
   const [photoFetching, setPhotoFetching] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
@@ -49,16 +49,16 @@ export default function Listings() {
   const { toast } = useToast();
 
   const fetchPhotos = async () => {
-    if (!photoFetchId || !poshmarkUrl.trim()) return;
+    if (!photoFetchId || !fetchUrl.trim()) return;
     setPhotoFetching(true);
     try {
-      const r = await apiRequest("POST", `/api/listings/${photoFetchId}/fetch-poshmark-photos`, { url: poshmarkUrl });
+      const r = await apiRequest("POST", `/api/listings/${photoFetchId}/fetch-photos`, { url: fetchUrl });
       const data = await r.json();
       if (data.error) throw new Error(data.error);
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
       toast({ title: `${data.images.length} photo(s) loaded!` });
       setPhotoFetchId(null);
-      setPoshmarkUrl("");
+      setFetchUrl("");
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally { setPhotoFetching(false); }
@@ -278,7 +278,7 @@ export default function Listings() {
                 onAI={() => getAISuggestions(listing.id)}
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
-                onFetchPhotos={() => { setPhotoFetchId(listing.id); setPoshmarkUrl(""); }}
+                onFetchPhotos={() => { setPhotoFetchId(listing.id); setFetchUrl(""); }}
                 onAutoLink={() => autoLink(listing.id)}
               />
             ))}
@@ -465,34 +465,34 @@ export default function Listings() {
         </DialogContent>
       </Dialog>
 
-      {/* ── FETCH POSHMARK PHOTOS DIALOG ── */}
-      <Dialog open={photoFetchId !== null} onOpenChange={() => { setPhotoFetchId(null); setPoshmarkUrl(""); }}>
+      {/* ── FETCH URL PHOTOS DIALOG ── */}
+      <Dialog open={photoFetchId !== null} onOpenChange={() => { setPhotoFetchId(null); setFetchUrl(""); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ImagePlus size={16} className="text-[#e94365]" />
-              Fetch Photos from Poshmark
+              <ImagePlus size={16} className="text-secondary" />
+              Fetch Photos from URL
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Paste the Poshmark listing URL to pull photos into this listing.
+              Paste the Depop or Poshmark listing URL to pull photos into this listing.
             </p>
             <Input
-              value={poshmarkUrl}
-              onChange={e => setPoshmarkUrl(e.target.value)}
-              placeholder="https://poshmark.com/listing/..."
+              value={fetchUrl}
+              onChange={e => setFetchUrl(e.target.value)}
+              placeholder="https://depop.com/products/..."
               className="rounded-xl text-sm"
               autoFocus
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setPhotoFetchId(null); setPoshmarkUrl(""); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setPhotoFetchId(null); setFetchUrl(""); }}>Cancel</Button>
             <Button
               onClick={fetchPhotos}
-              disabled={!poshmarkUrl.trim() || photoFetching}
-              style={{ background: "#e94365" }}
-              className="gap-1.5"
+              disabled={!fetchUrl.trim() || photoFetching}
+              style={{ background: "#09b1ba" }}
+              className="gap-1.5 text-white"
             >
               {photoFetching ? <><Loader2 size={13} className="animate-spin" /> Fetching...</> : <><ImagePlus size={13} /> Fetch Photos</>}
             </Button>
@@ -592,8 +592,8 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
         ) : (
           <button
             onClick={onFetchPhotos}
-            className="w-full sm:w-24 h-24 rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-[#e94365]/40 hover:text-[#e94365]/60 transition-colors group"
-            title="Fetch photos from Poshmark"
+            className="w-full sm:w-24 h-24 rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-secondary/40 hover:text-secondary/60 transition-colors group"
+            title="Fetch photos from Depop/Poshmark"
           >
             <ImagePlus size={20} className="mb-1 group-hover:scale-110 transition-transform" />
             <span className="text-[10px] font-medium hidden sm:block">Add Photo</span>
@@ -698,7 +698,7 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onFetchPhotos} className="gap-2 text-xs">
-                <ImagePlus size={12} /> Fetch photos (Poshmark)
+                <ImagePlus size={12} /> Fetch URL photos
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => window.open(`/api/listings/${listing.id}/download-images`, '_blank')} className="gap-2 text-xs">
                 <Download size={12} /> Download Photos (ZIP)
