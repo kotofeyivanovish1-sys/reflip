@@ -10,7 +10,6 @@ import path from "path";
 import crypto from "crypto";
 import sharp from "sharp";
 import { searchAllPlatforms, fetchPoshmarkListing, fetchDepopListing } from "./marketSearch";
-import { removeBackground, compositeImage } from "./imageProcessor";
 import AdmZip from "adm-zip";
 
 // Resize image to max 1200px and compress as JPEG — keeps Anthropic request under limits
@@ -243,95 +242,6 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const userId = requireAuth(req, res);
     if (!userId) return;
     res.json(storage.getPlatformAnalytics(userId));
-  });
-
-  // === AI: BATCH SOURCING MAGIC ===
-  app.post("/api/ai/batch-source", upload.array("images", 20), async (req, res) => {
-    const userId = requireAuth(req, res);
-    if (!userId) return;
-    
-    // Fast response that delegates processing to background or waits (here we wait, as Railway timeouts are ~60s)
-    const files = (req.files as Express.Multer.File[]) || [];
-    if (files.length === 0) return void res.status(400).json({ error: "No images provided" });
-
-    const userEmail = Buffer.from(req.headers.authorization!.replace("Bearer ", ""), "base64").toString().split(":")[1];
-    const user = storage.getUserByEmail(userEmail);
-    const customBg = user?.customBackground;
-    
-    const uploadsDir = path.resolve(process.env.DB_PATH ? path.dirname(process.env.DB_PATH) : ".", "uploads");
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-    try {
-      const client = getAI();
-      const results = [];
-
-      // Process sequentially to avoid memory overload / rate limits
-      for (const file of files) {
-        let finalBuffer: Buffer;
-        try {
-          if (customBg && process.env.FAL_KEY) {
-            // 1. Remove background
-            const cleanFg = await removeBackground(fs.readFileSync(file.path));
-            // 2. Composite onto custom background
-            const absBg = customBg.startsWith("/uploads/") ? path.join(uploadsDir, customBg.replace("/uploads/", "")) : customBg;
-            finalBuffer = await compositeImage(cleanFg, absBg, 0.85);
-          } else {
-            // Fallback just use the image
-            finalBuffer = fs.readFileSync(file.path);
-          }
-        } catch (e: any) {
-          console.error("Image processing error:", e);
-          finalBuffer = fs.readFileSync(file.path); // Fallback
-        }
-
-        const ext = "jpg";
-        const filename = `batch_${userId}_${Date.now()}_${Math.floor(Math.random()*1000)}.${ext}`;
-        const targetPath = path.join(uploadsDir, filename);
-        fs.writeFileSync(targetPath, finalBuffer);
-        const savedUrl = `/uploads/${filename}`;
-        
-        // Resize for AI
-        const aiBuf = await sharp(finalBuffer).resize(600, 600, {fit: "inside"}).jpeg({quality: 70}).toBuffer();
-
-        // 3. AI Text Gen
-        const prompt = "You are a professional vintage/clothing reseller. Look at this clothing item and generate a JSON with its details: title (trendy, max 50 chars), description (detailed, uses bullet points for condition/details), suggested listedPrice (number), brand (if visible or guess), size (if visible or empty string), and category (Shirts/Pants/Outerwear/Other/Accessories). Respond ONLY in valid JSON.";
-        const message = await client.messages.create({
-          model: "claude-sonnet-4-6", // matching the user's specific endpoint alias
-          max_tokens: 300,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: aiBuf.toString("base64") } },
-                { type: "text", text: prompt }
-              ]
-            }
-          ]
-        });
-
-        const text = message.content[0].type === "text" ? message.content[0].text : "";
-        const parsed = safeParseJSON(text) || { title: "Draft Item", description: "Batch imported item", listedPrice: 20, brand: null, size: null, category: "Other" };
-
-        const listing = storage.createListing({
-          title: parsed.title || "Draft Item",
-          description: parsed.description || "—",
-          brand: parsed.brand || null,
-          size: parsed.size || null,
-          condition: "good",
-          category: parsed.category || "Other",
-          imageUrl: JSON.stringify([savedUrl]),
-          costPrice: 0,
-          listedPrice: parsed.listedPrice || null,
-          platform: "depop",
-          status: "draft",
-        } as any, userId);
-
-        results.push(listing);
-      }
-      res.json({ success: true, count: results.length, listings: results });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
   });
 
   // === AI: QUICK LISTING ===
