@@ -296,7 +296,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         // 3. AI Text Gen
         const prompt = "You are a professional vintage/clothing reseller. Look at this clothing item and generate a JSON with its details: title (trendy, max 50 chars), description (detailed, uses bullet points for condition/details), suggested listedPrice (number), brand (if visible or guess), size (if visible or empty string), and category (Shirts/Pants/Outerwear/Other/Accessories). Respond ONLY in valid JSON.";
         const message = await client.messages.create({
-          model: "claude-3-haiku-20240307", // use Haiku for fast batching
+          model: "claude-sonnet-4-6", // matching the user's specific endpoint alias
           max_tokens: 300,
           messages: [
             {
