@@ -148,23 +148,6 @@ export default function Listings() {
     },
   });
 
-  const autoLink = async (id: number) => {
-    toast({ title: "Auto-Linking...", description: "Searching multiple platforms for exact matches. This may take 5-15s." });
-    try {
-      const res = await apiRequest("POST", `/api/listings/${id}/auto-link`);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message || data.error);
-      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-      if (data.linked.length > 0) {
-        toast({ title: "Links found!", description: `Found matches for: ${data.linked.join(", ")}` });
-      } else {
-        toast({ title: "No matches found." });
-      }
-    } catch(e: any) {
-      toast({ title: "Auto-link failed", description: e.message, variant: "destructive" });
-    }
-  };
-
   const getAISuggestions = async (id: number) => {
     setSuggestId(id);
     setSuggestLoading(true);
@@ -262,7 +245,7 @@ export default function Listings() {
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
                 onFetchPhotos={() => { setPhotoFetchId(listing.id); setFetchUrl(""); }}
-                onAutoLink={() => autoLink(listing.id)}
+                onAutoLink={() => {}}
               />
             ))}
           </div>
@@ -662,11 +645,6 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
               {(status === "active" || status === "pending") && (
                 <DropdownMenuItem onClick={onExport} className="gap-2 text-xs">
                   <ExternalLink size={12} /> Export / Crosslist
-                </DropdownMenuItem>
-              )}
-              {status === "active" && (
-                <DropdownMenuItem onClick={onAutoLink} className="gap-2 text-xs">
-                  <Sparkles size={12} className="text-[#e94365]" /> Auto-Link Platforms
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
