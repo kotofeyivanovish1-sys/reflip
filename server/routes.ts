@@ -131,7 +131,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const ext = path.extname(file.originalname) || ".jpg";
       const filename = `bg_${userId}_${Date.now()}${ext}`;
       const targetPath = path.join(uploadsDir, filename);
-      fs.renameSync(file.path, targetPath);
+      fs.copyFileSync(file.path, targetPath);
+      fs.unlinkSync(file.path);
       const url = `/uploads/${filename}`;
       storage.updateUserBackground(userId, url);
       res.json({ success: true, customBackground: url });
