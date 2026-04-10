@@ -7,8 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Camera, Sparkles, Copy, CheckCheck, X, Plus,
-  ArrowRight, ShoppingBag, ChevronRight, Check,
-  Package, DollarSign, Tag
+  ArrowRight, Check, Package
 } from "lucide-react";
 import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -46,10 +45,8 @@ export default function NewListing() {
   const [copied, setCopied] = useState<string | null>(null);
 
   // Modes
-  const [mode, setMode] = useState<"single"|"depop"|"batch">("single");
+  const [mode, setMode] = useState<"single"|"depop">("single");
   const [depopUrl, setDepopUrl] = useState("");
-  const [batching, setBatching] = useState(false);
-  const [batchCount, setBatchCount] = useState(0);
 
   // Save state
   const [saving, setSaving] = useState(false);
@@ -78,43 +75,6 @@ export default function NewListing() {
     } catch (e: any) {
       toast({ title: "Import failed", description: e.message, variant: "destructive" });
       setStep("input");
-    }
-  };
-
-  // BATCH MAGIC IMPORT
-  const handleBatchMagic = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setBatching(true);
-    setStep("analyzing");
-    try {
-      const formData = new FormData();
-      Array.from(files).slice(0, 20).forEach(f => formData.append("images", f));
-      const res = await fetch("/api/ai/batch-source", { method: "POST", body: formData, headers: getAuthHeaders() });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setBatchCount(data.count || 0);
-      toast({ title: `Successfully batched ${data.count} items!` });
-      setStep("saved");
-      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-    } catch (e: any) {
-      toast({ title: "Batch failed", description: e.message, variant: "destructive" });
-      setStep("input");
-    } finally {
-      setBatching(false);
-    }
-  };
-
-  // BACKGROUND UPLOAD
-  const handleBackgroundUpload = async (file: File) => {
-    try {
-      const fd = new FormData();
-      fd.append("image", file);
-      const res = await fetch("/api/user/background", { method: "POST", body: fd, headers: getAuthHeaders() });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      toast({ title: "Background saved!" });
-    } catch(e: any) {
-      toast({ title: "Failed to upload bg", description: e.message, variant: "destructive" });
     }
   };
 
@@ -237,7 +197,6 @@ export default function NewListing() {
               <div className="flex bg-muted/30 p-1 rounded-2xl mb-4">
                 <button onClick={() => setMode("single")} className={`flex-1 text-xs font-semibold py-2.5 rounded-xl transition-all ${mode==='single' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"}`}>Manual</button>
                 <button onClick={() => setMode("depop")} className={`flex-1 text-xs font-semibold py-2.5 rounded-xl transition-all ${mode==='depop' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"}`}>Depop URL</button>
-                <button onClick={() => setMode("batch")} className={`flex-1 text-xs font-semibold py-2.5 rounded-xl transition-all ${mode==='batch' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"}`}>Batch Magic ⚡️</button>
               </div>
 
               {/* SINGLE MODE */}
@@ -323,35 +282,6 @@ export default function NewListing() {
                 </div>
               )}
 
-              {/* BATCH MAGIC MODE */}
-              {mode === "batch" && (
-                <div className="space-y-4">
-                  <div className="glass-card rounded-3xl p-6 text-center border-2 border-primary/20 border-dashed">
-                    <div className="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center float mb-4"
-                      style={{ background: "linear-gradient(135deg, hsl(250 80% 65%), hsl(280 70% 65%))" }}>
-                      <Sparkles size={26} className="text-white" />
-                    </div>
-                    <h3 className="font-semibold text-sm">Batch AI Generator</h3>
-                    <p className="text-xs text-muted-foreground mt-1 mb-4">Select up to 20 raw clothing photos. We will remove the background, place them on your trademark background, crop them perfectly, and create AI draft listings for each!</p>
-                    
-                    <Button onClick={() => fileRef.current?.click()} className="h-10 rounded-xl px-10">Select Photos (Max 20)</Button>
-                    <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
-                      onChange={e => handleBatchMagic(e.target.files)} />
-                  </div>
-
-                  <div className="glass-card rounded-2xl p-4 bg-muted/10 border border-border/50">
-                    <p className="text-xs font-semibold mb-2 text-muted-foreground uppercase">Settings</p>
-                    <label className="text-xs font-medium cursor-pointer flex gap-3 items-center">
-                       <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center border border-border shrink-0">🖼️</div>
-                       <div>
-                         <p>Update Custom Background</p>
-                         <p className="text-[10px] text-muted-foreground">Upload your trademark background pattern</p>
-                       </div>
-                       <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleBackgroundUpload(e.target.files[0])} />
-                    </label>
-                  </div>
-                </div>
-              )}
             </>
           )}
 
@@ -365,17 +295,11 @@ export default function NewListing() {
                 <Sparkles size={24} className="text-white" />
               </div>
               <div>
-                <p className="font-semibold text-sm mb-1">{batching ? "Processing Batch Image Magic..." : "Analyzing your item..."}</p>
-                <p className="text-xs text-muted-foreground">{batching ? "Stripping backgrounds, positioning on template, generating drafts..." : "Checking prices & fetching details..."}</p>
+                <p className="font-semibold text-sm mb-1">Analyzing your item...</p>
+                <p className="text-xs text-muted-foreground">Checking prices & fetching details...</p>
               </div>
               <div className="w-full space-y-2">
-                {batching ? ["Removing backgrounds from photos", "Compositing custom patterns", "Generating descriptions via AI"].map((label, i) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
-                    <Skeleton className="flex-1 h-3 skeleton" style={{ animationDelay: `${i * 0.2}s` }} />
-                    <p className="text-xs text-muted-foreground shrink-0">{label}</p>
-                  </div>
-                )) : ["Identifying brand & details", "Checking live market prices", "Building descriptions"].map((label, i) => (
+                {["Identifying brand & details", "Checking live market prices", "Building descriptions"].map((label, i) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
                     <Skeleton className="flex-1 h-3 skeleton" style={{ animationDelay: `${i * 0.2}s` }} />
@@ -579,7 +503,7 @@ export default function NewListing() {
                 <Check size={32} className="text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold mb-1">{batching ? `Successfully created ${batchCount} Items!` : "Saved to inventory!"}</h2>
+                <h2 className="text-lg font-semibold mb-1">Saved to inventory!</h2>
                 {savedBag && (
                   <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2 mt-2">
                     <Package size={16} className="text-primary" />
