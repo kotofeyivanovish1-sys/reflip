@@ -157,20 +157,17 @@ export default function EditListing() {
                 className="rounded-xl" data-testid="input-title" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs mb-1.5 block text-muted-foreground">Brand</Label>
                 <Input value={form.brand} onChange={e => update("brand", e.target.value)}
                   placeholder="Levi's, Zara..." className="rounded-xl" />
               </div>
               <div>
-                <Label className="text-xs mb-1.5 block text-muted-foreground">Size</Label>
-                <Input value={form.size} onChange={e => update("size", e.target.value)}
-                  placeholder="M, W32, XS..." className="rounded-xl" />
+                <Label className="text-xs mb-1.5 block text-muted-foreground">Category</Label>
+                <Input value={form.category} onChange={e => update("category", e.target.value)}
+                  placeholder="Jeans, Jacket..." className="rounded-xl" />
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs mb-1.5 block text-muted-foreground">Condition</Label>
                 <Select value={form.condition} onValueChange={v => update("condition", v)}>
@@ -179,11 +176,6 @@ export default function EditListing() {
                     {CONDITIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <Label className="text-xs mb-1.5 block text-muted-foreground">Category</Label>
-                <Input value={form.category} onChange={e => update("category", e.target.value)}
-                  placeholder="Jeans, Jacket..." className="rounded-xl" />
               </div>
             </div>
 

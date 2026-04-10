@@ -277,7 +277,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       contentParts.push({
         type: "text",
-        text: `You are a pro reseller on Depop/Vinted. Analyze this item and generate listing content for 4 platforms.
+        text: `You are an experienced reseller who writes listings that sell fast on Depop, Vinted, Poshmark, and eBay. Your descriptions sound like a real person wrote them, never like AI.
 
 Seller notes: "${description || "see images"}"
 
@@ -289,21 +289,43 @@ PRICING RULES (be realistic, not optimistic):
 - Poshmark: seller nets 80% of list price
 - eBay: seller nets ~85% after fees
 
-DESCRIPTION STYLE (Depop/Vinted aesthetic — use for ALL platforms):
-Write in this exact structure:
-1. BRAND + item name + emoji (e.g. "ZARA beige utility jacket 🤍")
-2. Material/composition (e.g. "100% cotton, made in Turkey")
-3. Style/vibe — 2-3 aesthetic keywords (e.g. "Effortless minimal, clean girl, old money aesthetic ✨")
-4. Size + fit (e.g. "Size: XS/S — relaxed fit")
-5. Condition (e.g. "Condition: very good, like new, no flaws")
-6. Trending NOW line (e.g. "Trending NOW: neutral tones, clean minimal layering, Pinterest aesthetic")
-7. Styling tips — what to pair with (e.g. "Pairs with jeans, trousers, skirts, cargo pants")
-8. "Open to offers 📩"
-9. 5-8 hashtags at the end (#brand #itemtype #color #aesthetic #style)
+DESCRIPTION STYLE:
+Write like a real Depop/Vinted seller. Natural, casual, authentic voice. Each line is a separate thought, no bullet points, no numbered lists.
 
-Use emojis sparingly but effectively: 🤍 ✨ 📩 💕
-Tone: brief, trendy, TikTok/Pinterest aesthetic. Write in English.
-Use REAL data from the item: actual brand, color, type, size, condition.
+FOLLOW THIS EXACT STYLE (real example):
+"vintage gap denim shirt, heavy 100% cotton made in Hong Kong 💙
+
+the kind of faded wash you can't buy new anymore, naturally worn in over 30 years
+
+90s workwear, vintage americana, unisex street ✨
+
+fits M-L oversized, chest 23in, length 29in, boxy relaxed, great on smaller frames too
+
+light wear consistent with age, small pull at side seam barely visible, no stains or damage
+
+Trending NOW: vintage denim layering, 90s workwear revival, thrift core
+
+Pairs with wide-leg jeans, cargo pants, biker shorts or tied over a white tee
+
+open to offers 💌
+
+#vintagegap #90sdenim #denimshirt #workwearaesthetic #thriftfinds"
+
+CRITICAL RULES:
+- NEVER use em-dashes (—), use commas instead
+- NEVER use bullet points or numbered lists
+- NEVER use formal/corporate language
+- Each line = one thought, separated by blank lines
+- Lowercase is fine, feels more authentic
+- Use emojis sparingly: 💙 ✨ 💌 🤍 (1-3 per description max)
+- Include real measurements if visible in photos
+- Mention specific details that make the item special (fabric weight, country of origin, era)
+- "Trending NOW" line with current aesthetic trends relevant to the item
+- Styling suggestions, what to pair it with
+- End with "open to offers 💌" or similar
+- 5-8 hashtags at the very end, no spaces between # and word, all lowercase
+- Sound like a REAL PERSON, not a bot. Think TikTok/Depop seller energy
+- Descriptions must be SEO-optimized: include searchable keywords naturally (brand name, item type, color, material, decade, aesthetic names)
 
 IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
 
@@ -316,10 +338,10 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
   "color": "color",
   "aesthetic": "aesthetic vibe",
   "platforms": {
-    "depop":    { "title": "short punchy title", "description": "full Depop/Vinted style description with hashtags", "listPrice": 35, "netAfterFees": 30, "feeNote": "~13% fees", "marketNote": "similar items sell $X-$Y" },
-    "vinted":   { "title": "vinted title",       "description": "full Depop/Vinted style description with hashtags", "listPrice": 28, "netAfterFees": 28, "feeNote": "0% seller fees", "marketNote": "vinted range" },
-    "poshmark": { "title": "poshmark title",     "description": "full Depop/Vinted style description with hashtags", "listPrice": 40, "netAfterFees": 32, "feeNote": "20% fee", "marketNote": "poshmark range" },
-    "ebay":     { "title": "eBay SEO title",     "description": "full Depop/Vinted style description with hashtags", "listPrice": 32, "netAfterFees": 27, "feeNote": "~15% fees", "marketNote": "ebay sold range" }
+    "depop":    { "title": "short punchy title", "description": "full natural description following the style above", "listPrice": 35, "netAfterFees": 30, "feeNote": "~13% fees", "marketNote": "similar items sell $X-$Y" },
+    "vinted":   { "title": "vinted title",       "description": "full natural description following the style above", "listPrice": 28, "netAfterFees": 28, "feeNote": "0% seller fees", "marketNote": "vinted range" },
+    "poshmark": { "title": "poshmark title",     "description": "full natural description following the style above", "listPrice": 40, "netAfterFees": 32, "feeNote": "20% fee", "marketNote": "poshmark range" },
+    "ebay":     { "title": "eBay SEO title with keywords",     "description": "full natural description following the style above", "listPrice": 32, "netAfterFees": 27, "feeNote": "~15% fees", "marketNote": "ebay sold range" }
   },
   "hashtags": ["#brand", "#itemtype", "#color", "#aesthetic", "#style"],
   "profitabilityRating": "high",
@@ -365,29 +387,47 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
     const { brand, size, condition, category, description, platforms } = req.body;
     try {
       const client = getAI();
-      const prompt = `You are a pro reseller on Depop/Vinted. Generate listing descriptions in this exact style:
-
-1. BRAND + item name + emoji (e.g. "ZARA beige utility jacket 🤍")
-2. Material/composition
-3. Style/vibe — 2-3 aesthetic keywords (e.g. "Effortless minimal, clean girl, old money aesthetic ✨")
-4. Size + fit
-5. Condition
-6. Trending NOW line
-7. Styling tips — what to pair with
-8. "Open to offers 📩"
-9. 5-8 hashtags (#brand #itemtype #color #aesthetic #style)
-
-Use emojis: 🤍 ✨ 📩 💕. Tone: brief, trendy, TikTok/Pinterest aesthetic. English only.
+      const prompt = `You are an experienced reseller. Write listing descriptions that sound like a real person, never like AI.
 
 Item details:
 - Brand: ${brand || "Unknown"}
 - Category: ${category || "Clothing"}
-- Size: ${size || "Unknown"}
+- Size: ${size || "not specified"}
 - Condition: ${condition}
 - Notes: ${description}
 
 Generate for platforms: ${(platforms || ["depop", "vinted"]).join(", ")}.
 Also suggest optimal pricing per platform.
+
+DESCRIPTION STYLE (follow this real example):
+"vintage gap denim shirt, heavy 100% cotton made in Hong Kong 💙
+
+the kind of faded wash you can't buy new anymore, naturally worn in over 30 years
+
+90s workwear, vintage americana, unisex street ✨
+
+fits M-L oversized, chest 23in, length 29in, boxy relaxed
+
+light wear consistent with age, no stains or damage
+
+Trending NOW: vintage denim layering, 90s workwear revival
+
+Pairs with wide-leg jeans, cargo pants or tied over a white tee
+
+open to offers 💌
+
+#vintagegap #90sdenim #denimshirt #workwearaesthetic #thriftfinds"
+
+RULES:
+- NEVER use em-dashes (—), use commas instead
+- NEVER use bullet points or numbered lists
+- Each line = one thought, separated by blank lines
+- Lowercase is fine, sounds more authentic
+- Emojis: 1-3 max per description (💙 ✨ 💌 🤍)
+- Include "Trending NOW" line and styling tips
+- End with "open to offers 💌" and 5-8 hashtags
+- Sound like a REAL PERSON, not a bot
+- SEO: include brand, item type, color, material, aesthetic keywords naturally
 
 Respond in JSON:
 {
@@ -576,33 +616,49 @@ Respond in JSON:
     if (!listing) return void res.status(404).json({ error: "Listing not found" });
     try {
       const client = getAI();
-      const prompt = `You are a pro reseller on Depop/Vinted. Improve and expand this existing description into the Depop/Vinted listing style.
+      const prompt = `Rewrite this listing description so it sounds like a real Depop/Vinted seller wrote it. Keep all the real details, just make it sell better.
 
-Existing description to improve:
+Existing description:
 "${listing.description}"
 
 Item details:
 - Title: ${listing.title}
 - Brand: ${listing.brand || "Unknown"}
 - Category: ${listing.category || "Clothing"}
-- Size: ${listing.size || "Unknown"}
+- Size: ${listing.size || "not specified"}
 - Condition: ${listing.condition}
 - Platform: ${listing.platform}
 
-Rewrite using this exact structure:
-1. BRAND + item name + emoji (e.g. "ZARA beige utility jacket 🤍")
-2. Material/composition (if known or infer from context)
-3. Style/vibe — 2-3 aesthetic keywords (e.g. "Effortless minimal, clean girl, old money aesthetic ✨")
-4. Size + fit
-5. Condition
-6. Trending NOW line
-7. Styling tips — what to pair with
-8. "Open to offers 📩"
-9. 5-8 hashtags (#brand #itemtype #color #aesthetic #style)
+FOLLOW THIS STYLE (real example):
+"vintage gap denim shirt, heavy 100% cotton made in Hong Kong 💙
 
-Use emojis sparingly: 🤍 ✨ 📩 💕
-Tone: brief, trendy, TikTok/Pinterest aesthetic. English only.
-Keep the real details from the original description. Make it better, not different.
+the kind of faded wash you can't buy new anymore, naturally worn in over 30 years
+
+90s workwear, vintage americana, unisex street ✨
+
+fits M-L oversized, chest 23in, length 29in, boxy relaxed
+
+light wear consistent with age, no stains or damage
+
+Trending NOW: vintage denim layering, 90s workwear revival
+
+Pairs with wide-leg jeans, cargo pants or tied over a white tee
+
+open to offers 💌
+
+#vintagegap #90sdenim #denimshirt #workwearaesthetic #thriftfinds"
+
+RULES:
+- NEVER use em-dashes (—), use commas instead
+- NEVER use bullet points or numbered lists
+- Each line = one thought, separated by blank lines
+- Lowercase feels more authentic, use it
+- Emojis: 1-3 max (💙 ✨ 💌 🤍)
+- Include "Trending NOW" line and styling tips
+- End with "open to offers 💌" and 5-8 hashtags
+- Must NOT sound like AI wrote it. No formal language, no corporate tone
+- SEO: include searchable keywords naturally (brand, item type, color, material, aesthetic)
+- Keep the REAL details from the original. Make it better, not different.
 
 Respond with ONLY the improved description text, no JSON, no markdown fences.`;
 

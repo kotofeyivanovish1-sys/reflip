@@ -58,6 +58,8 @@ export default function NewListing() {
       file, preview: URL.createObjectURL(file),
     }));
     setImages(prev => [...prev, ...newImgs].slice(0, 8));
+    // Reset input so same files can be re-selected
+    if (fileRef.current) fileRef.current.value = "";
   }, [images.length]);
 
   const removeImage = (i: number) => setImages(prev => prev.filter((_, idx) => idx !== i));
