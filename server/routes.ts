@@ -793,6 +793,25 @@ Respond in JSON:
     }
   });
 
+  // Save image URLs directly (user pastes image links)
+  app.post("/api/listings/:id/save-image-urls", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const listing = storage.getListing(Number(req.params.id), userId);
+    if (!listing) return void res.status(404).json({ error: "Listing not found" });
+    const { urls } = req.body;
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+      return void res.status(400).json({ error: "Provide an array of image URLs" });
+    }
+    const validUrls = urls.filter((u: string) => typeof u === "string" && u.startsWith("http"));
+    if (validUrls.length === 0) {
+      return void res.status(400).json({ error: "No valid image URLs found" });
+    }
+    const imageUrl = JSON.stringify(validUrls);
+    const updated = storage.updateListing(Number(req.params.id), { imageUrl } as any, userId);
+    res.json({ images: validUrls, listing: updated });
+  });
+
   // Import a full listing from Poshmark URL
   app.post("/api/poshmark/import", async (req, res) => {
     const userId = requireAuth(req, res);

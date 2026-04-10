@@ -42,17 +42,29 @@ export default function Listings() {
   const [photoFetchId, setPhotoFetchId] = useState<number | null>(null);
   const [fetchUrl, setFetchUrl] = useState("");
   const [photoFetching, setPhotoFetching] = useState(false);
+  const [photoMode, setPhotoMode] = useState<"url" | "direct">("direct");
   const { toast } = useToast();
 
   const fetchPhotos = async () => {
     if (!photoFetchId || !fetchUrl.trim()) return;
     setPhotoFetching(true);
     try {
-      const r = await apiRequest("POST", `/api/listings/${photoFetchId}/fetch-photos`, { url: fetchUrl });
-      const data = await r.json();
-      if (data.error) throw new Error(data.error);
-      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-      toast({ title: `${data.images.length} photo(s) loaded!` });
+      if (photoMode === "direct") {
+        // Direct image URLs — split by newlines, filter valid URLs
+        const urls = fetchUrl.split(/[\n,]+/).map(u => u.trim()).filter(u => u.startsWith("http"));
+        if (urls.length === 0) throw new Error("No valid image URLs found. Each URL must start with http");
+        const r = await apiRequest("POST", `/api/listings/${photoFetchId}/save-image-urls`, { urls });
+        const data = await r.json();
+        if (data.error) throw new Error(data.error);
+        queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+        toast({ title: `${data.images.length} photo(s) saved!` });
+      } else {
+        const r = await apiRequest("POST", `/api/listings/${photoFetchId}/fetch-photos`, { url: fetchUrl });
+        const data = await r.json();
+        if (data.error) throw new Error(data.error);
+        queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+        toast({ title: `${data.images.length} photo(s) loaded!` });
+      }
       setPhotoFetchId(null);
       setFetchUrl("");
     } catch (e: any) {
@@ -436,26 +448,63 @@ export default function Listings() {
         </DialogContent>
       </Dialog>
 
-      {/* ── FETCH URL PHOTOS DIALOG ── */}
+      {/* ── ADD PHOTOS DIALOG ── */}
       <Dialog open={photoFetchId !== null} onOpenChange={() => { setPhotoFetchId(null); setFetchUrl(""); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ImagePlus size={16} className="text-secondary" />
-              Fetch Photos from URL
+              Add Photos
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Paste the listing URL from any platform (Poshmark, Depop, etc.) to pull photos.
-            </p>
-            <Input
-              value={fetchUrl}
-              onChange={e => setFetchUrl(e.target.value)}
-              placeholder="https://poshmark.com/listing/... or https://depop.com/products/..."
-              className="rounded-xl text-sm"
-              autoFocus
-            />
+            {/* Mode toggle */}
+            <div className="flex gap-1 bg-muted rounded-lg p-1">
+              <button
+                onClick={() => { setPhotoMode("direct"); setFetchUrl(""); }}
+                className={`flex-1 text-xs py-1.5 rounded-md font-medium transition-all ${
+                  photoMode === "direct" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Paste Image URLs
+              </button>
+              <button
+                onClick={() => { setPhotoMode("url"); setFetchUrl(""); }}
+                className={`flex-1 text-xs py-1.5 rounded-md font-medium transition-all ${
+                  photoMode === "url" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                From Listing URL
+              </button>
+            </div>
+
+            {photoMode === "direct" ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Right-click photos on Depop/Poshmark → "Copy Image Address" and paste here. One URL per line.
+                </p>
+                <textarea
+                  value={fetchUrl}
+                  onChange={e => setFetchUrl(e.target.value)}
+                  placeholder={"https://media-photos.depop.com/...\nhttps://di2ponv0v5otw.cloudfront.net/..."}
+                  className="w-full rounded-xl text-sm p-3 bg-background border border-input min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  autoFocus
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Auto-fetch from a listing page. May not work if the platform blocks server requests.
+                </p>
+                <Input
+                  value={fetchUrl}
+                  onChange={e => setFetchUrl(e.target.value)}
+                  placeholder="https://depop.com/products/... or https://poshmark.com/listing/..."
+                  className="rounded-xl text-sm"
+                  autoFocus
+                />
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setPhotoFetchId(null); setFetchUrl(""); }}>Cancel</Button>
@@ -465,7 +514,7 @@ export default function Listings() {
               style={{ background: "#09b1ba" }}
               className="gap-1.5 text-white"
             >
-              {photoFetching ? <><Loader2 size={13} className="animate-spin" /> Fetching...</> : <><ImagePlus size={13} /> Fetch Photos</>}
+              {photoFetching ? <><Loader2 size={13} className="animate-spin" /> Saving...</> : <><ImagePlus size={13} /> {photoMode === "direct" ? "Save Photos" : "Fetch Photos"}</>}
             </Button>
           </DialogFooter>
         </DialogContent>
