@@ -134,7 +134,7 @@ export interface IStorage {
   // Bags
   getBags(userId: number): { bagNumber: number; item?: Listing }[];
   getBag(userId: number, bagNumber: number): { bagNumber: number; item?: Listing } | undefined;
-  getNextBagNumber(): number;
+  getNextBagNumber(userId: number): number;
   assignBagToListing(listingId: number, userId: number): number;
   // Listings
   getListings(userId: number, status?: string, platform?: string): Listing[];
@@ -185,13 +185,13 @@ class SQLiteStorage implements IStorage {
     return { bagNumber, item: mapRow(raw) };
   }
 
-  getNextBagNumber(): number {
-    const row = sqlite.prepare(`SELECT MAX(bag_number) as max FROM listings`).get() as { max: number | null };
+  getNextBagNumber(userId: number): number {
+    const row = sqlite.prepare(`SELECT MAX(bag_number) as max FROM listings WHERE user_id = ?`).get(userId) as { max: number | null };
     return (row.max || 0) + 1;
   }
 
   assignBagToListing(listingId: number, userId: number): number {
-    const bagNumber = this.getNextBagNumber();
+    const bagNumber = this.getNextBagNumber(userId);
     const now = new Date().toISOString();
     try {
       sqlite.prepare(`INSERT INTO bags (user_id, bag_number, created_at) VALUES (?, ?, ?)`).run(userId, bagNumber, now);
@@ -216,7 +216,7 @@ class SQLiteStorage implements IStorage {
 
   createListing(data: InsertListing, userId: number): Listing {
     const now = new Date().toISOString().split("T")[0];
-    const bagNumber = this.getNextBagNumber();
+    const bagNumber = this.getNextBagNumber(userId);
     const bagNow = new Date().toISOString();
     try {
       sqlite.prepare(`INSERT INTO bags (user_id, bag_number, created_at) VALUES (?, ?, ?)`).run(userId, bagNumber, bagNow);

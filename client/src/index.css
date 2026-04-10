@@ -3,26 +3,26 @@
 @tailwind utilities;
 
 /* ─── FONTS ─────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 @layer base {
   :root {
     /* Light mode — warm off-white with gradient accent */
-    --background: 0 0% 97%;
-    --foreground: 220 15% 10%;
+    --background: 0 0% 98%;
+    --foreground: 240 10% 4%;
     --card: 0 0% 100%;
-    --card-foreground: 220 15% 10%;
+    --card-foreground: 240 10% 4%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 10%;
-    --primary: 250 80% 58%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 250 85% 55%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 195 80% 52%;
-    --secondary-foreground: 195 80% 10%;
-    --muted: 220 10% 93%;
-    --muted-foreground: 220 8% 52%;
-    --accent: 280 75% 60%;
+    --secondary: 195 85% 52%;
+    --secondary-foreground: 195 90% 10%;
+    --muted: 240 5% 94%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 280 80% 60%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 5 72% 50%;
+    --destructive: 348 83% 54%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 10% 88%;
     --input: 220 10% 90%;
@@ -46,21 +46,22 @@
   }
 
   .dark {
-    --background: 230 20% 7%;
-    --foreground: 220 8% 92%;
-    --card: 230 18% 10%;
-    --card-foreground: 220 8% 92%;
-    --popover: 230 18% 10%;
-    --popover-foreground: 220 8% 92%;
-    --primary: 250 80% 68%;
-    --primary-foreground: 230 20% 7%;
-    --secondary: 195 75% 58%;
-    --secondary-foreground: 230 20% 7%;
-    --muted: 230 15% 16%;
-    --muted-foreground: 220 8% 52%;
-    --accent: 280 70% 65%;
-    --accent-foreground: 230 20% 7%;
-    --destructive: 5 65% 58%;
+    /* Dark mode — ultra deep dark with neon accents */
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 250 85% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 195 85% 60%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 8% 12%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 280 80% 65%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 348 83% 58%;
     --destructive-foreground: 0 0% 100%;
     --border: 230 15% 18%;
     --input: 230 15% 18%;
@@ -88,6 +89,10 @@
     font-family: 'Inter', -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
+    letter-spacing: -0.02em;
   }
   .font-mono {
     font-variant-numeric: tabular-nums lining-nums;
@@ -127,29 +132,31 @@
 
 /* ─── GLASSMORPHISM ──────────────────────────────────────── */
 .glass {
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .dark .glass {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(32px) saturate(150%);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
 }
 
 .dark .glass-card {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  background: rgba(20, 20, 25, 0.4);
+  backdrop-filter: blur(32px) saturate(150%);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
 }
 
 /* ─── TYPOGRAPHY — matching reference large serif style ─── */

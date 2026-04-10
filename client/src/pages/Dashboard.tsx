@@ -6,7 +6,7 @@ import { TrendingUp, DollarSign, Package, Tag, ArrowUpRight, RefreshCw, Zap, Ale
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const PRIORITY_COLORS = {
   high: "text-red-500 bg-red-50 dark:bg-red-900/20",
@@ -66,6 +66,10 @@ export default function Dashboard() {
     } catch {} finally { setRecsLoading(false); }
   };
 
+  useEffect(() => {
+    loadRecs();
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
@@ -105,17 +109,27 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* AI Recommendations */}
-        {(recommendations || recsLoading) && (
-          <div className="slide-up">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center"
-                style={{ background: "linear-gradient(135deg, hsl(250 80% 58%), hsl(280 70% 60%))" }}>
-                <Zap size={12} className="text-white" />
+        {/* AI Co-Pilot Persistent Monitor */}
+        <div className="slide-up">
+          <div className="glass-card border-primary/20 rounded-3xl p-5 mb-4 shadow-[0_0_40px_-15px_rgba(var(--primary),0.3)]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center pulse-glow"
+                  style={{ background: "linear-gradient(135deg, hsl(250 85% 65%), hsl(280 80% 65%))" }}>
+                  <Zap size={18} className="text-white drop-shadow-md" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">ReFlip AI Co-Pilot</h2>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Monitoring your active listings...
+                  </p>
+                </div>
               </div>
-              <h2 className="text-sm font-semibold">AI Recommendations</h2>
               {recommendations?.topInsight && (
-                <span className="text-xs text-muted-foreground ml-1">— {recommendations.topInsight}</span>
+                <div className="hidden md:flex items-center bg-primary/5 border border-primary/10 rounded-xl px-4 py-2 text-xs text-primary font-medium">
+                  "{recommendations.topInsight}"
+                </div>
               )}
             </div>
             {recsLoading ? (
@@ -141,9 +155,7 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-        )}
-
-        {/* Charts row */}
+        </div>        {/* Charts row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Monthly chart */}
           <div className="lg:col-span-2 glass-card rounded-2xl p-5">

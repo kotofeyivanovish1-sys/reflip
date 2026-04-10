@@ -563,42 +563,52 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
   const thumb = images[0];
 
   return (
-    <div className="glass-card rounded-2xl px-4 py-3 hover:shadow-md transition-all duration-200">
-      <div className="flex items-center gap-3">
+    <div className="glass-card rounded-2xl p-4 hover:shadow-lg transition-all duration-300 border border-border/50">
+      <div className="flex flex-col sm:flex-row gap-4">
         {/* Thumbnail */}
         {thumb ? (
-          <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-muted/30">
-            <img src={thumb} alt="" className="w-full h-full object-cover" loading="lazy" />
+          <div className="w-full sm:w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-muted/30 shadow-inner group">
+            <img src={thumb} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
           </div>
         ) : (
           <button
             onClick={onFetchPhotos}
-            className="w-12 h-12 rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex items-center justify-center text-muted-foreground/40 hover:border-[#e94365]/40 hover:text-[#e94365]/60 transition-colors"
+            className="w-full sm:w-24 h-24 rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-[#e94365]/40 hover:text-[#e94365]/60 transition-colors group"
             title="Fetch photos from Poshmark"
           >
-            <ImagePlus size={16} />
+            <ImagePlus size={20} className="mb-1 group-hover:scale-110 transition-transform" />
+            <span className="text-[10px] font-medium hidden sm:block">Add Photo</span>
           </button>
         )}
 
         {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-            <p className="font-medium text-sm truncate max-w-[160px] sm:max-w-none">{listing.title}</p>
-            <span className={`badge-${status} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{status}</span>
-            <span className={`badge-${listing.platform} text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0`}>{listing.platform}</span>
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
+          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+            {bagNum && (
+              <span className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-xs font-bold px-2 py-0.5 rounded-md shadow-sm">
+                <Package size={12} /> Bag #{bagNum}
+              </span>
+            )}
+            <p className="font-semibold text-base truncate max-w-[200px] sm:max-w-none">{listing.title}</p>
+            <span className={`badge-${status} text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{status}</span>
+            <span className={`badge-${listing.platform} text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{listing.platform}</span>
             {listing.brand && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{listing.brand}</span>
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/50">{listing.brand}</span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            <span>Cost <span className="font-mono text-foreground">${listing.costPrice ?? "—"}</span></span>
-            <span>Listed <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
-            {listing.soldPrice != null && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+${(listing.soldPrice - listing.costPrice).toFixed(0)}</span>}
+          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+            <span className="flex items-center gap-1"><span className="text-xs opacity-70">Cost:</span> <span className="font-mono font-medium text-foreground">${listing.costPrice ?? "—"}</span></span>
+            <span className="flex items-center gap-1"><span className="text-xs opacity-70">Listed:</span> <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
+            {listing.soldPrice != null && (
+              <span className="text-emerald-500 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                +${(listing.soldPrice - listing.costPrice).toFixed(0)} NET
+              </span>
+            )}
           </div>
         </div>
 
         {/* Actions — responsive */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex sm:flex-col items-center sm:items-end justify-center sm:justify-center gap-2 shrink-0 mt-3 sm:mt-0 border-t sm:border-t-0 sm:border-l border-border/30 pt-3 sm:pt-0 sm:pl-4">
           {/* Primary CTA — always visible */}
           {status === "active" && (
             <Button
