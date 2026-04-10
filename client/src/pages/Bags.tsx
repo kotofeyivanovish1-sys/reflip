@@ -82,19 +82,19 @@ export default function Bags() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <SidebarTrigger />
-          <div>
-            <h1 className="text-base font-semibold">My Bags</h1>
-            <p className="text-xs text-muted-foreground">{counts.total} bags · 1 item per bag</p>
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-semibold">My Bags</h1>
+            <p className="text-[11px] sm:text-xs text-muted-foreground">{counts.total} bags · 1 item per bag</p>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
         {/* Stats strip */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {[
             { label: "Total bags", value: counts.total, color: "hsl(250 80% 60%)" },
             { label: "Listed", value: counts.active, color: "hsl(250 80% 60%)" },

@@ -269,6 +269,9 @@
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
 
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* ─── IMAGE UPLOAD ZONE ──────────────────────────────────── */
 .upload-zone {
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);

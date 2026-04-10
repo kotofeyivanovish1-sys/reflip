@@ -116,16 +116,16 @@ export default function EditListing() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <SidebarTrigger />
-          <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => navigate("/listings")}>
-            <ArrowLeft size={13} /> Back
+          <Button variant="ghost" size="sm" className="gap-1 sm:gap-1.5 text-xs px-2 sm:px-3" onClick={() => navigate("/listings")}>
+            <ArrowLeft size={13} /> <span className="hidden sm:inline">Back</span>
           </Button>
-          <div>
-            <h1 className="text-base font-semibold">Edit Listing</h1>
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-semibold truncate">Edit Listing</h1>
             {listing?.bagNumber && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <p className="text-[11px] sm:text-xs text-muted-foreground flex items-center gap-1">
                 <Package size={10} /> Bag #{listing.bagNumber}
               </p>
             )}
@@ -144,7 +144,7 @@ export default function EditListing() {
         </Button>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-4 sm:py-6">
         <div className="max-w-2xl mx-auto space-y-5">
 
           {/* Core fields */}

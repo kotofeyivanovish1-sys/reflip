@@ -202,11 +202,11 @@ export default function NewListing() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center gap-3 px-6 py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
+      <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
         <SidebarTrigger />
-        <div className="flex-1">
-          <h1 className="text-base font-semibold">New Listing</h1>
-          <p className="text-xs text-muted-foreground">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm sm:text-base font-semibold">New Listing</h1>
+          <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
             {step === "input" && "Drop photos + describe the item"}
             {step === "analyzing" && "AI is analyzing..."}
             {step === "review" && "Review prices & copy descriptions"}
@@ -226,7 +226,7 @@ export default function NewListing() {
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-5 py-6 space-y-4">
+        <div className="max-w-2xl mx-auto px-3 sm:px-5 py-4 sm:py-6 space-y-4">
 
           {/* ══════════════════════════════════════
               STEP 1: INPUT

@@ -842,19 +842,25 @@ Respond in JSON:
     const listing = storage.getListing(Number(req.params.id), userId);
     if (!listing) return void res.status(404).json({ error: "Listing not found" });
     const { url } = req.body;
-    if (!url) return void res.status(400).json({ error: "Poshmark or Depop listing URL required" });
+    if (!url) return void res.status(400).json({ error: "Listing URL required" });
     try {
       let data;
       if (url.includes("depop.com")) {
         const d = await fetchDepopListing(url);
-        if (d && d.images) data = d;
-      } else {
-        const d = await fetchPoshmarkListing(url);
-        if (d && d.images) data = d;
+        if (d && d.images && d.images.length > 0) data = d;
       }
-      
+      if (!data && url.includes("poshmark.com")) {
+        const d = await fetchPoshmarkListing(url);
+        if (d && d.images && d.images.length > 0) data = d;
+      }
+      // Generic fallback: try both scrapers if URL doesn't match known platforms
+      if (!data && !url.includes("depop.com") && !url.includes("poshmark.com")) {
+        const d = await fetchPoshmarkListing(url);
+        if (d && d.images && d.images.length > 0) data = d;
+      }
+
       if (!data || data.images.length === 0) {
-        return void res.status(404).json({ error: "No photos found on this external listing" });
+        return void res.status(404).json({ error: "No photos found. Make sure the listing URL is correct and publicly accessible." });
       }
       
       // Store images as JSON array in imageUrl field

@@ -6,7 +6,7 @@ import { TrendingUp, DollarSign, Package, Tag, ArrowUpRight, RefreshCw, Zap, Ale
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const PRIORITY_COLORS = {
   high: "text-red-500 bg-red-50 dark:bg-red-900/20",
@@ -66,29 +66,26 @@ export default function Dashboard() {
     } catch {} finally { setRecsLoading(false); }
   };
 
-  useEffect(() => {
-    loadRecs();
-  }, []);
-
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border/50 sticky top-0 bg-background/80 backdrop-blur-xl z-10">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <SidebarTrigger />
-          <div>
-            <h1 className="text-base font-semibold">
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-semibold truncate">
               Good morning, <span className="gradient-text">{user?.name || "Reseller"}</span>
             </h1>
-            <p className="text-xs text-muted-foreground">Your business at a glance</p>
+            <p className="text-[11px] sm:text-xs text-muted-foreground">Your business at a glance</p>
           </div>
         </div>
-        <Button size="sm" variant="outline" className="gap-2 rounded-xl text-xs h-8" onClick={loadRecs} disabled={recsLoading}>
+        <Button size="sm" variant="outline" className="gap-1.5 sm:gap-2 rounded-xl text-[11px] sm:text-xs h-7 sm:h-8 shrink-0" onClick={loadRecs} disabled={recsLoading}>
           <RefreshCw size={12} className={recsLoading ? "animate-spin" : ""} />
-          {recsLoading ? "Analyzing..." : "AI Recommendations"}
+          <span className="hidden sm:inline">{recsLoading ? "Analyzing..." : "AI Recommendations"}</span>
+          <span className="sm:hidden">{recsLoading ? "..." : "AI"}</span>
         </Button>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* KPI Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {isLoading ? (

@@ -42,10 +42,6 @@ export default function Listings() {
   const [photoFetchId, setPhotoFetchId] = useState<number | null>(null);
   const [fetchUrl, setFetchUrl] = useState("");
   const [photoFetching, setPhotoFetching] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importUrl, setImportUrl] = useState("");
-  const [importCost, setImportCost] = useState("");
-  const [importing, setImporting] = useState(false);
   const { toast } = useToast();
 
   const fetchPhotos = async () => {
@@ -62,25 +58,6 @@ export default function Listings() {
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally { setPhotoFetching(false); }
-  };
-
-  const importFromPoshmark = async () => {
-    if (!importUrl.trim()) return;
-    setImporting(true);
-    try {
-      const r = await apiRequest("POST", "/api/poshmark/import", { url: importUrl, costPrice: Number(importCost) || 0 });
-      const data = await r.json();
-      if (data.error) throw new Error(data.error);
-      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/bags"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats/dashboard"] });
-      toast({ title: `Imported: ${data.title}`, description: `Bag #${data.bagNumber} assigned` });
-      setImportOpen(false);
-      setImportUrl("");
-      setImportCost("");
-    } catch (e: any) {
-      toast({ title: "Import failed", description: e.message, variant: "destructive" });
-    } finally { setImporting(false); }
   };
 
   const openQR = async (bagNumber: number) => {
@@ -190,28 +167,22 @@ export default function Listings() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between gap-2 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <SidebarTrigger />
-          <div>
-            <h1 className="text-lg font-semibold">Listings</h1>
-            <p className="text-xs text-muted-foreground">{listings.length} items</p>
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold truncate">Listings</h1>
+            <p className="text-[11px] sm:text-xs text-muted-foreground">{listings.length} items</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="rounded-xl gap-1.5 text-xs border-[#e94365]/30 text-[#e94365] hover:bg-[#e94365]/10"
-            onClick={() => setImportOpen(true)}>
-            <ImagePlus size={13} /> Poshmark
-          </Button>
-          <Button size="sm" asChild className="rounded-xl gap-1.5">
-            <Link href="/listings/new"><Plus size={14} /> New</Link>
-          </Button>
-        </div>
+        <Button size="sm" asChild className="rounded-xl gap-1.5 shrink-0">
+          <Link href="/listings/new"><Plus size={14} /> New</Link>
+        </Button>
       </header>
 
       {/* Filter bar — scrollable on mobile */}
-      <div className="px-4 sm:px-6 py-3 border-b border-border/60 overflow-x-auto">
-        <div className="flex gap-2 min-w-max">
+      <div className="px-3 sm:px-5 md:px-6 py-2.5 sm:py-3 border-b border-border/60 overflow-x-auto scrollbar-none">
+        <div className="flex gap-1.5 sm:gap-2 min-w-max">
           {/* Status filters */}
           <div className="flex gap-1 items-center">
             {STATUSES.map(s => (
@@ -248,7 +219,7 @@ export default function Listings() {
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full skeleton rounded-2xl" />)}
@@ -476,12 +447,12 @@ export default function Listings() {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Paste the Depop or Poshmark listing URL to pull photos into this listing.
+              Paste the listing URL from any platform (Poshmark, Depop, etc.) to pull photos.
             </p>
             <Input
               value={fetchUrl}
               onChange={e => setFetchUrl(e.target.value)}
-              placeholder="https://depop.com/products/..."
+              placeholder="https://poshmark.com/listing/... or https://depop.com/products/..."
               className="rounded-xl text-sm"
               autoFocus
             />
@@ -500,53 +471,6 @@ export default function Listings() {
         </DialogContent>
       </Dialog>
 
-      {/* ── IMPORT FROM POSHMARK DIALOG ── */}
-      <Dialog open={importOpen} onOpenChange={() => { setImportOpen(false); setImportUrl(""); setImportCost(""); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ImagePlus size={16} className="text-[#e94365]" />
-              Import from Poshmark
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Paste a Poshmark listing URL — title, description, price, and photos will be imported automatically.
-            </p>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Poshmark URL</Label>
-              <Input
-                value={importUrl}
-                onChange={e => setImportUrl(e.target.value)}
-                placeholder="https://poshmark.com/listing/..."
-                className="rounded-xl text-sm"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Cost price ($)</Label>
-              <Input
-                type="number"
-                value={importCost}
-                onChange={e => setImportCost(e.target.value)}
-                placeholder="0"
-                className="rounded-xl font-mono text-sm"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setImportOpen(false); setImportUrl(""); setImportCost(""); }}>Cancel</Button>
-            <Button
-              onClick={importFromPoshmark}
-              disabled={!importUrl.trim() || importing}
-              style={{ background: "#e94365" }}
-              className="gap-1.5"
-            >
-              {importing ? <><Loader2 size={13} className="animate-spin" /> Importing...</> : "Import Listing"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -582,60 +506,60 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
   const thumb = images[0];
 
   return (
-    <div className="glass-card rounded-2xl p-4 hover:shadow-lg transition-all duration-300 border border-border/50">
-      <div className="flex flex-col sm:flex-row gap-4">
+    <div className="glass-card rounded-xl sm:rounded-2xl p-3 sm:p-4 hover:shadow-lg transition-all duration-300 border border-border/50">
+      <div className="flex flex-row gap-3 sm:gap-4">
         {/* Thumbnail */}
         {thumb ? (
-          <div className="w-full sm:w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-muted/30 shadow-inner group">
+          <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl overflow-hidden shrink-0 bg-muted/30 shadow-inner group">
             <img src={thumb} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
           </div>
         ) : (
           <button
             onClick={onFetchPhotos}
-            className="w-full sm:w-24 h-24 rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-secondary/40 hover:text-secondary/60 transition-colors group"
+            className="w-16 h-16 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-secondary/40 hover:text-secondary/60 transition-colors group"
             title="Fetch photos from Depop/Poshmark"
           >
-            <ImagePlus size={20} className="mb-1 group-hover:scale-110 transition-transform" />
+            <ImagePlus size={16} className="sm:mb-1 group-hover:scale-110 transition-transform" />
             <span className="text-[10px] font-medium hidden sm:block">Add Photo</span>
           </button>
         )}
 
         {/* Info */}
         <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-1 sm:mb-1.5">
             {bagNum && (
-              <span className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-xs font-bold px-2 py-0.5 rounded-md shadow-sm">
-                <Package size={12} /> Bag #{bagNum}
+              <span className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md shadow-sm">
+                <Package size={10} className="sm:w-3 sm:h-3" /> Bag #{bagNum}
               </span>
             )}
-            <p className="font-semibold text-base truncate max-w-[200px] sm:max-w-none">{listing.title}</p>
-            <span className={`badge-${status} text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{status}</span>
-            <span className={`badge-${listing.platform} text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{listing.platform}</span>
+            <p className="font-semibold text-sm sm:text-base truncate max-w-[140px] sm:max-w-[280px] md:max-w-none">{listing.title}</p>
+            <span className={`badge-${status} text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{status}</span>
+            <span className={`badge-${listing.platform} text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{listing.platform}</span>
             {listing.brand && (
-              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/50">{listing.brand}</span>
+              <span className="text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/50 hidden sm:inline-flex">{listing.brand}</span>
             )}
           </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-            <span className="flex items-center gap-1"><span className="text-xs opacity-70">Cost:</span> <span className="font-mono font-medium text-foreground">${listing.costPrice ?? "—"}</span></span>
-            <span className="flex items-center gap-1"><span className="text-xs opacity-70">Listed:</span> <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
+          <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground flex-wrap">
+            <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70">Cost:</span> <span className="font-mono font-medium text-foreground">${listing.costPrice ?? "—"}</span></span>
+            <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70">Listed:</span> <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
             {listing.soldPrice != null && (
-              <span className="text-emerald-500 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-md border border-emerald-500/20">
+              <span className="text-emerald-500 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-1.5 sm:px-2 py-0.5 rounded-md border border-emerald-500/20 text-xs">
                 +${(listing.soldPrice - listing.costPrice).toFixed(0)} NET
               </span>
             )}
-            
+
             {/* PLATFORM LINKS PREVIEW */}
             <div className="flex gap-1 ml-auto shrink-0">
-               {(listing as any).depopUrl && <a href={(listing as any).depopUrl} target="_blank" rel="noreferrer" title="Depop link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.depop}}>d</a>}
-               {(listing as any).vintedUrl && <a href={(listing as any).vintedUrl} target="_blank" rel="noreferrer" title="Vinted link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.vinted}}>v</a>}
-               {(listing as any).poshmarkUrl && <a href={(listing as any).poshmarkUrl} target="_blank" rel="noreferrer" title="Poshmark link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.poshmark}}>p</a>}
-               {(listing as any).ebayUrl && <a href={(listing as any).ebayUrl} target="_blank" rel="noreferrer" title="eBay link" className="w-5 h-5 rounded hover:opacity-80 flex items-center justify-center text-[10px] text-white" style={{background:PLATFORM_DOT.ebay}}>e</a>}
+               {(listing as any).depopUrl && <a href={(listing as any).depopUrl} target="_blank" rel="noreferrer" title="Depop link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.depop}}>d</a>}
+               {(listing as any).vintedUrl && <a href={(listing as any).vintedUrl} target="_blank" rel="noreferrer" title="Vinted link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.vinted}}>v</a>}
+               {(listing as any).poshmarkUrl && <a href={(listing as any).poshmarkUrl} target="_blank" rel="noreferrer" title="Poshmark link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.poshmark}}>p</a>}
+               {(listing as any).ebayUrl && <a href={(listing as any).ebayUrl} target="_blank" rel="noreferrer" title="eBay link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.ebay}}>e</a>}
             </div>
           </div>
         </div>
 
         {/* Actions — responsive */}
-        <div className="flex sm:flex-col items-center sm:items-end justify-center sm:justify-center gap-2 shrink-0 mt-3 sm:mt-0 border-t sm:border-t-0 sm:border-l border-border/30 pt-3 sm:pt-0 sm:pl-4">
+        <div className="flex sm:flex-col items-center sm:items-end justify-center sm:justify-center gap-1.5 sm:gap-2 shrink-0 sm:border-l border-border/30 sm:pl-3 md:pl-4 ml-auto sm:ml-0">
           {/* Primary CTA — always visible */}
           {status === "active" && (
             <Button

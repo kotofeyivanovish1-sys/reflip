@@ -286,15 +286,15 @@ export default function Scanner() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center gap-3 px-6 py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
+      <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
         <SidebarTrigger />
         <div>
-          <h1 className="text-lg font-semibold">Store Scanner</h1>
-          <p className="text-xs text-muted-foreground">Check if an item is worth buying at Goodwill</p>
+          <h1 className="text-base sm:text-lg font-semibold">Store Scanner</h1>
+          <p className="text-[11px] sm:text-xs text-muted-foreground">Check if an item is worth buying at Goodwill</p>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-4 sm:py-6">
         <div className="max-w-3xl mx-auto space-y-5">
           {/* Input card */}
           <Card>
