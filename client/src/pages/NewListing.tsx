@@ -384,6 +384,24 @@ export default function NewListing() {
                 </div>
               </div>
 
+              {/* Live market data */}
+              {result._marketData?.length > 0 && (
+                <div className="glass-card rounded-2xl p-4">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Live market prices</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {result._marketData.map((m: any) => (
+                      <div key={m.platform} className="rounded-xl p-2.5 text-center"
+                        style={{ background: `${PLATFORM_COLORS[m.platform]}12`, border: `1px solid ${PLATFORM_COLORS[m.platform]}25` }}>
+                        <p className="text-[10px] font-bold uppercase" style={{ color: PLATFORM_COLORS[m.platform] }}>{m.platform}</p>
+                        <p className="text-sm font-bold font-mono">${m.medianPrice || m.avgPrice}</p>
+                        <p className="text-[9px] text-muted-foreground">${m.minPrice}-${m.maxPrice}</p>
+                        <p className="text-[9px] text-muted-foreground">{m.count} {m.type === "sold" ? "sold" : "listed"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Platform prices + descriptions */}
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
