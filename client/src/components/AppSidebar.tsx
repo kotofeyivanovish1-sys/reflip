@@ -3,7 +3,7 @@ import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, ShoppingBag, Plus, ScanLine, BarChart3, Moon, Sun, LogOut } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, Plus, ScanLine, Flame, BarChart3, Moon, Sun, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: "/listings", icon: ShoppingBag, label: "Listings" },
   { href: "/listings/new", icon: Plus, label: "New Listing" },
   { href: "/scanner", icon: ScanLine, label: "Store Scanner" },
+  { href: "/deals", icon: Flame, label: "Deal Finder" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
 ];
 

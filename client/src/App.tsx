@@ -14,6 +14,7 @@ import Bags from "@/pages/Bags";
 import EditListing from "@/pages/EditListing";
 import Scanner from "@/pages/Scanner";
 import Analytics from "@/pages/Analytics";
+import DealFinder from "@/pages/DealFinder";
 import NotFound from "@/pages/not-found";
 
 function AppInner() {
@@ -39,6 +40,7 @@ function AppInner() {
           <Route path="/bags" component={Bags} />
           <Route path="/listings/:id/edit" component={EditListing} />
           <Route path="/scanner" component={Scanner} />
+          <Route path="/deals" component={DealFinder} />
           <Route path="/analytics" component={Analytics} />
           <Route component={NotFound} />
         </Switch>

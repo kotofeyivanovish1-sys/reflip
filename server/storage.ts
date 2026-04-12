@@ -2,8 +2,8 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import * as schema from "../shared/schema";
-import { listings, scanResults, platformStats, users, bags } from "../shared/schema";
-import type { InsertListing, Listing, InsertScanResult, ScanResult, InsertPlatformStat, PlatformStat, User, Bag } from "../shared/schema";
+import { listings, scanResults, platformStats, users, bags, savedDeals } from "../shared/schema";
+import type { InsertListing, Listing, InsertScanResult, ScanResult, InsertPlatformStat, PlatformStat, User, Bag, InsertSavedDeal, SavedDeal } from "../shared/schema";
 import bcrypt from "bcryptjs";
 
 // Use DB_PATH env var for Railway Volume, fallback for local dev
@@ -86,6 +86,24 @@ try { sqlite.exec(`ALTER TABLE listings ADD COLUMN poshmark_url TEXT`); } catch 
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN ebay_url TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE users ADD COLUMN custom_background TEXT`); } catch {}
 
+// saved_deals table for Deal Finder
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS saved_deals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    query TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    title TEXT NOT NULL,
+    price REAL NOT NULL,
+    market_price REAL NOT NULL,
+    discount INTEGER NOT NULL,
+    url TEXT,
+    analysis TEXT,
+    status TEXT NOT NULL DEFAULT 'saved',
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+`);
+
 // Migrate existing data: assign all unowned records to user id=1 (first user)
 // This ensures the first person who registers gets all their existing data
 try { sqlite.exec(`UPDATE listings SET user_id = 1 WHERE user_id IS NULL`); } catch {}
@@ -154,6 +172,11 @@ export interface IStorage {
   // Scan results
   createScanResult(data: InsertScanResult, userId: number): ScanResult;
   getScanResults(userId: number): ScanResult[];
+  // Deals
+  getSavedDeals(userId: number): SavedDeal[];
+  createSavedDeal(data: InsertSavedDeal, userId: number): SavedDeal;
+  updateSavedDealStatus(id: number, status: string, userId: number): SavedDeal | undefined;
+  deleteSavedDeal(id: number, userId: number): void;
   // Stats
   getDashboardStats(userId: number): {
     totalRevenue: number; totalProfit: number; totalItems: number;
@@ -288,6 +311,51 @@ class SQLiteStorage implements IStorage {
 
   getScanResults(userId: number): ScanResult[] {
     return sqlite.prepare(`SELECT * FROM scan_results WHERE user_id = ? ORDER BY id DESC`).all(userId) as ScanResult[];
+  }
+
+  getSavedDeals(userId: number): SavedDeal[] {
+    return sqlite.prepare(`SELECT * FROM saved_deals WHERE user_id = ? ORDER BY id DESC`).all(userId).map((row: any) => ({
+      id: row.id,
+      userId: row.user_id,
+      query: row.query,
+      platform: row.platform,
+      title: row.title,
+      price: row.price,
+      marketPrice: row.market_price,
+      discount: row.discount,
+      url: row.url,
+      analysis: row.analysis,
+      status: row.status,
+      createdAt: row.created_at,
+    })) as SavedDeal[];
+  }
+
+  createSavedDeal(data: InsertSavedDeal, userId: number): SavedDeal {
+    const now = new Date().toISOString();
+    const result = sqlite.prepare(`
+      INSERT INTO saved_deals (user_id, query, platform, title, price, market_price, discount, url, analysis, status, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING *
+    `).get(userId, data.query, data.platform, data.title, data.price, data.marketPrice, data.discount, data.url ?? null, data.analysis ?? null, data.status ?? 'saved', now) as any;
+    return {
+      id: result.id, userId: result.user_id, query: result.query, platform: result.platform,
+      title: result.title, price: result.price, marketPrice: result.market_price, discount: result.discount,
+      url: result.url, analysis: result.analysis, status: result.status, createdAt: result.created_at,
+    } as SavedDeal;
+  }
+
+  updateSavedDealStatus(id: number, status: string, userId: number): SavedDeal | undefined {
+    sqlite.prepare(`UPDATE saved_deals SET status = ? WHERE id = ? AND user_id = ?`).run(status, id, userId);
+    const row = sqlite.prepare(`SELECT * FROM saved_deals WHERE id = ? AND user_id = ?`).get(id, userId) as any;
+    if (!row) return undefined;
+    return {
+      id: row.id, userId: row.user_id, query: row.query, platform: row.platform,
+      title: row.title, price: row.price, marketPrice: row.market_price, discount: row.discount,
+      url: row.url, analysis: row.analysis, status: row.status, createdAt: row.created_at,
+    } as SavedDeal;
+  }
+
+  deleteSavedDeal(id: number, userId: number): void {
+    sqlite.prepare(`DELETE FROM saved_deals WHERE id = ? AND user_id = ?`).run(id, userId);
   }
 
   getDashboardStats(userId: number) {
