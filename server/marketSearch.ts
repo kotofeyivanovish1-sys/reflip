@@ -387,6 +387,9 @@ export async function fetchPoshmarkListing(listingUrl: string): Promise<ScrapedL
   };
 }
 
+export { searchEbay, searchVinted, searchDepop, searchPoshmark, emptyMarketData };
+export type { MarketData, MarketListing };
+
 export async function searchAllPlatforms(query: string, size?: string): Promise<MarketData[]> {
   const [ebay, vinted, depop, poshmark] = await Promise.allSettled([
     searchEbay(query, size),

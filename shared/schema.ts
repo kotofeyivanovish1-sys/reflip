@@ -89,3 +89,23 @@ export const platformStats = sqliteTable("platform_stats", {
 export const insertPlatformStatSchema = createInsertSchema(platformStats).omit({ id: true });
 export type InsertPlatformStat = z.infer<typeof insertPlatformStatSchema>;
 export type PlatformStat = typeof platformStats.$inferSelect;
+
+// --- SAVED DEALS (Deal Finder) ---
+export const savedDeals = sqliteTable("saved_deals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id"),
+  query: text("query").notNull(),
+  platform: text("platform").notNull(),
+  title: text("title").notNull(),
+  price: real("price").notNull(),
+  marketPrice: real("market_price").notNull(),
+  discount: integer("discount").notNull(),
+  url: text("url"),
+  analysis: text("analysis"),
+  status: text("status").notNull().default("saved"), // saved | bought | skipped
+  createdAt: text("created_at").notNull().default(""),
+});
+
+export const insertSavedDealSchema = createInsertSchema(savedDeals).omit({ id: true, createdAt: true });
+export type InsertSavedDeal = z.infer<typeof insertSavedDealSchema>;
+export type SavedDeal = typeof savedDeals.$inferSelect;

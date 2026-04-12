@@ -9,7 +9,8 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import sharp from "sharp";
-import { searchAllPlatforms, fetchPoshmarkListing, fetchDepopListing } from "./marketSearch";
+import { searchAllPlatforms, fetchPoshmarkListing, fetchDepopListing, searchEbay, searchVinted, searchDepop, searchPoshmark } from "./marketSearch";
+import type { MarketData, MarketListing } from "./marketSearch";
 import AdmZip from "adm-zip";
 
 // Resize image to max 1200px and compress as JPEG — keeps Anthropic request under limits
@@ -1018,6 +1019,271 @@ Respond in JSON:
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // === DEAL FINDER ===
+
+  // Hardcoded fallback trends shown when AI is unavailable
+  const FALLBACK_TRENDS = {
+    trends: [
+      { query: "vintage Carhartt jacket", category: "clothing", buyPrice: { low: 8, high: 25 }, resalePrice: { low: 60, high: 180 }, demand: "high", trendReason: "Workwear revival on TikTok, huge on Depop Gen Z", platforms: ["depop", "ebay"] },
+      { query: "Nike Dunk Low", category: "sneakers", buyPrice: { low: 30, high: 80 }, resalePrice: { low: 120, high: 300 }, demand: "high", trendReason: "Still the hottest silhouette, panda colorway especially", platforms: ["ebay", "depop"] },
+      { query: "Y2K baby tee", category: "clothing", buyPrice: { low: 2, high: 8 }, resalePrice: { low: 25, high: 70 }, demand: "high", trendReason: "2000s nostalgia is peaking, graphic tees sell fast", platforms: ["depop", "vinted"] },
+      { query: "vintage Levi's 501", category: "clothing", buyPrice: { low: 5, high: 20 }, resalePrice: { low: 45, high: 120 }, demand: "high", trendReason: "Timeless classic, vintage washes always in demand", platforms: ["depop", "ebay"] },
+      { query: "Polo Ralph Lauren sweater", category: "clothing", buyPrice: { low: 5, high: 15 }, resalePrice: { low: 35, high: 90 }, demand: "medium", trendReason: "Prep revival, cable knits and rugby stripes trending", platforms: ["poshmark", "ebay"] },
+      { query: "Patagonia fleece", category: "clothing", buyPrice: { low: 10, high: 30 }, resalePrice: { low: 50, high: 150 }, demand: "high", trendReason: "Retro Snap-T fleeces are gorpcore staples", platforms: ["depop", "ebay"] },
+      { query: "Coach leather bag vintage", category: "accessories", buyPrice: { low: 8, high: 25 }, resalePrice: { low: 60, high: 180 }, demand: "high", trendReason: "Vintage Coach leather resurgence, Y2K aesthetic", platforms: ["depop", "poshmark"] },
+      { query: "Nintendo game vintage", category: "collectibles", buyPrice: { low: 3, high: 15 }, resalePrice: { low: 25, high: 150 }, demand: "medium", trendReason: "Retro gaming collectors pay premium for CIB games", platforms: ["ebay"] },
+      { query: "vintage band tee 90s", category: "clothing", buyPrice: { low: 3, high: 20 }, resalePrice: { low: 40, high: 250 }, demand: "high", trendReason: "Single stitch band tees are grails, huge markup", platforms: ["depop", "ebay"] },
+      { query: "Doc Martens 1460", category: "clothing", buyPrice: { low: 10, high: 30 }, resalePrice: { low: 50, high: 120 }, demand: "medium", trendReason: "Classic silhouette never goes out, vintage made in England versions premium", platforms: ["depop", "vinted"] },
+    ],
+    insight: "Vintage workwear, Y2K, and sneakers are dominating resale right now. Look for branded items at thrift stores.",
+  };
+
+  // Get trending categories for reselling
+  app.get("/api/deals/trending", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const client = getAI();
+      const prompt = `You are an expert reseller who knows the current secondhand fashion and goods market inside out.
+
+Based on current trends in resale (Depop, Vinted, Poshmark, eBay) as of 2024-2025, provide 8-10 trending search queries that have HIGH demand and good flip potential. Focus on items that:
+1. Are commonly found at thrift stores / garage sales / flea markets for cheap
+2. Have strong demand online with big price markup potential
+3. Are currently trending on TikTok, Instagram, or resale platforms
+
+Mix categories: vintage clothing, sneakers, accessories, electronics, collectibles, home goods.
+
+For each query, provide a specific search term (not generic), the typical thrift/buy price, typical resale price, and why it's trending.
+
+Respond with ONLY raw JSON, no markdown fences, no extra text:
+{
+  "trends": [
+    {
+      "query": "specific search term for marketplace",
+      "category": "clothing|sneakers|accessories|electronics|collectibles|home",
+      "buyPrice": { "low": 3, "high": 15 },
+      "resalePrice": { "low": 30, "high": 80 },
+      "demand": "high",
+      "trendReason": "short reason why this is hot right now",
+      "platforms": ["depop", "ebay"]
+    }
+  ],
+  "insight": "one sentence about the current resale market"
+}`;
+
+      const message = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1500,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+      const parsed = safeParseJSON(text);
+      if (!parsed || !Array.isArray(parsed.trends) || parsed.trends.length === 0) {
+        console.warn("[deals/trending] AI parsing failed, returning fallback trends");
+        return void res.json(FALLBACK_TRENDS);
+      }
+      res.json(parsed);
+    } catch (e: any) {
+      console.error("[deals/trending] Error:", e.message);
+      // Always return fallback on error so the UI is never empty
+      res.json(FALLBACK_TRENDS);
+    }
+  });
+
+  // Search for underpriced deals across platforms
+  app.post("/api/deals/search", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const { query, category } = req.body;
+    if (!query) return void res.status(400).json({ error: "Search query required" });
+    try {
+      // Search all platforms in parallel
+      const marketData = await searchAllPlatforms(query);
+
+      // Get eBay sold prices as the "true market value" baseline
+      const ebayData = marketData.find(m => m.platform === "ebay");
+      const ebayMedian = ebayData?.medianPrice || 0;
+      const ebayAvg = ebayData?.avgPrice || 0;
+      const marketValue = ebayMedian > 0 ? ebayMedian : ebayAvg;
+
+      // Collect all active listings from non-eBay platforms with their URLs
+      const activeListings: Array<MarketListing & { discount: number; marketValue: number }> = [];
+
+      for (const platformData of marketData) {
+        if (platformData.platform === "ebay") continue; // eBay is our baseline
+        for (const listing of platformData.listings) {
+          if (!listing.price || listing.price <= 0) continue;
+          if (listing.sold) continue;
+
+          // Calculate discount vs market value
+          const referencePrice = marketValue > 0 ? marketValue : platformData.medianPrice;
+          if (referencePrice <= 0) continue;
+
+          const discount = Math.round(((referencePrice - listing.price) / referencePrice) * 100);
+          if (discount >= 25) { // At least 25% below market value
+            activeListings.push({
+              ...listing,
+              discount,
+              marketValue: referencePrice,
+            });
+          }
+        }
+      }
+
+      // Sort by discount (biggest bargains first)
+      activeListings.sort((a, b) => b.discount - a.discount);
+      const topDeals = activeListings.slice(0, 20);
+
+      // Use AI to analyze the deals and add context
+      const client = getAI();
+      const dealsContext = topDeals.length > 0
+        ? topDeals.slice(0, 10).map((d, i) =>
+            `${i + 1}. "${d.title}" on ${d.platform} for $${d.price} (market value ~$${d.marketValue}, ${d.discount}% below market)${d.url ? ` URL: ${d.url}` : ""}`
+          ).join("\n")
+        : "No significantly underpriced listings found.";
+
+      const ebayContext = ebayData && ebayData.soldCount > 0
+        ? `eBay sold data: ${ebayData.soldCount} items sold, avg $${ebayData.avgPrice}, median $${ebayData.medianPrice}, range $${ebayData.minPrice}-$${ebayData.maxPrice}`
+        : "No eBay sold data available.";
+
+      const prompt = `You are an expert reseller analyzing potential deals found on resale platforms.
+
+Search query: "${query}"
+Category: ${category || "general"}
+
+REAL MARKET DATA:
+${ebayContext}
+
+${marketData.filter(m => m.platform !== "ebay" && m.avgPrice > 0).map(m =>
+  `${m.platform.toUpperCase()}: ${m.listings.length} active listings, avg $${m.avgPrice}, median $${m.medianPrice}`
+).join("\n")}
+
+POTENTIAL DEALS FOUND (listings priced below market value):
+${dealsContext}
+
+Analyze these deals and the overall market for "${query}". Consider:
+1. Is this item category currently trending?
+2. How fast do these items typically sell?
+3. Are the "deals" genuinely underpriced or is the market value inflated?
+4. What's the realistic profit after platform fees?
+
+Respond in JSON:
+{
+  "trendScore": 8,
+  "demandLevel": "high|medium|low",
+  "avgFlipProfit": { "low": 15, "high": 40 },
+  "marketSummary": "2-3 sentence summary of the market for this item",
+  "bestPlatformToBuy": "vinted",
+  "bestPlatformToSell": "depop",
+  "tips": ["tip1", "tip2"],
+  "dealRatings": [
+    {
+      "index": 0,
+      "rating": "great|good|okay|risky",
+      "note": "why this specific deal is good or risky"
+    }
+  ],
+  "searchSuggestions": ["related search 1", "related search 2"]
+}`;
+
+      const message = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1200,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+      const analysis = safeParseJSON(text);
+
+      res.json({
+        query,
+        deals: topDeals.map((d, i) => ({
+          title: d.title,
+          platform: d.platform,
+          price: d.price,
+          marketValue: d.marketValue,
+          discount: d.discount,
+          url: d.url || null,
+          condition: d.condition || null,
+          size: d.size || null,
+          rating: analysis?.dealRatings?.find((r: any) => r.index === i)?.rating || null,
+          ratingNote: analysis?.dealRatings?.find((r: any) => r.index === i)?.note || null,
+        })),
+        marketData: {
+          ebay: ebayData ? {
+            soldCount: ebayData.soldCount,
+            avgPrice: ebayData.avgPrice,
+            medianPrice: ebayData.medianPrice,
+            minPrice: ebayData.minPrice,
+            maxPrice: ebayData.maxPrice,
+          } : null,
+          platforms: marketData.filter(m => m.avgPrice > 0).map(m => ({
+            platform: m.platform,
+            avgPrice: m.avgPrice,
+            medianPrice: m.medianPrice,
+            count: m.platform === "ebay" ? m.soldCount : m.listings.length,
+            type: m.platform === "ebay" ? "sold" : "active",
+          })),
+        },
+        analysis: analysis || null,
+        totalFound: activeListings.length,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Save a deal
+  app.post("/api/deals/save", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const { query, platform, title, price, marketPrice, discount, url, analysis } = req.body;
+      if (!title || !platform || !price) return void res.status(400).json({ error: "Missing required fields" });
+      const deal = storage.createSavedDeal({
+        query: query || title,
+        platform,
+        title,
+        price: Number(price),
+        marketPrice: Number(marketPrice),
+        discount: Number(discount),
+        url: url || null,
+        analysis: analysis || null,
+        status: "saved",
+      }, userId);
+      res.json(deal);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // Get saved deals
+  app.get("/api/deals/saved", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    res.json(storage.getSavedDeals(userId));
+  });
+
+  // Update deal status
+  app.patch("/api/deals/:id", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const { status } = req.body;
+    if (!status) return void res.status(400).json({ error: "Status required" });
+    const deal = storage.updateSavedDealStatus(Number(req.params.id), status, userId);
+    if (!deal) return void res.status(404).json({ error: "Deal not found" });
+    res.json(deal);
+  });
+
+  // Delete a saved deal
+  app.delete("/api/deals/:id", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    storage.deleteSavedDeal(Number(req.params.id), userId);
+    res.json({ success: true });
   });
 
   // === BAGS ===
