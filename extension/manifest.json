@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "ReFlip Sync",
-  "version": "1.0.0",
-  "description": "Syncs your Depop, eBay, and Vinted listings to ReFlip",
-  "permissions": ["storage", "activeTab"],
+  "version": "1.1.0",
+  "description": "Syncs your Depop, eBay, and Vinted listings to ReFlip. Auto-syncs prices every 30 minutes.",
+  "permissions": ["storage", "activeTab", "alarms", "cookies"],
   "host_permissions": [
     "https://www.depop.com/*",
     "https://depop.com/*",
+    "https://webapi.depop.com/*",
     "https://www.ebay.com/*",
     "https://www.ebay.co.uk/*",
     "https://www.ebay.de/*",
@@ -27,6 +28,9 @@
     "https://*.railway.app/*",
     "http://localhost/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://www.depop.com/*", "https://depop.com/*"],
@@ -41,6 +45,11 @@
     {
       "matches": ["https://www.vinted.com/*", "https://www.vinted.fr/*", "https://www.vinted.de/*", "https://www.vinted.co.uk/*", "https://www.vinted.es/*", "https://www.vinted.it/*", "https://www.vinted.pl/*", "https://www.vinted.lt/*", "https://www.vinted.nl/*", "https://www.vinted.be/*", "https://www.vinted.pt/*", "https://www.vinted.cz/*"],
       "js": ["content-vinted.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.railway.app/*", "http://localhost/*"],
+      "js": ["content-reflip.js"],
       "run_at": "document_idle"
     }
   ],

@@ -150,6 +150,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json(data);
   });
 
+  // Returns all active listings that have at least one platform URL linked
+  // Used by the browser extension for background auto-sync
+  app.get("/api/listings/linked", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const all = storage.getListings(userId, "active");
+    const linked = all.filter((l: any) => l.depopUrl || l.vintedUrl || l.ebayUrl);
+    res.json(linked);
+  });
+
   app.get("/api/listings/:id", (req, res) => {
     const userId = requireAuth(req, res);
     if (!userId) return;

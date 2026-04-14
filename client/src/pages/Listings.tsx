@@ -7,7 +7,7 @@ import {
   Plus, Trash2, CheckCircle, Sparkles, ExternalLink, Copy, CheckCheck,
   Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2, RefreshCw
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -43,10 +43,27 @@ export default function Listings() {
   const [fetchUrl, setFetchUrl] = useState("");
   const [photoFetching, setPhotoFetching] = useState(false);
   const [photoMode, setPhotoMode] = useState<"url" | "direct">("direct");
-  const [syncId, setSyncId] = useState<number | null>(null);
-  const [syncLoading, setSyncLoading] = useState(false);
-  const [syncResult, setSyncResult] = useState<any>(null);
+  const [extensionInstalled, setExtensionInstalled] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [lastAutoSync, setLastAutoSync] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Detect extension and get last sync status
+  useEffect(() => {
+    const handleReady = () => setExtensionInstalled(true);
+    const handleStatus = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.reflip_last_sync) setLastAutoSync(detail.reflip_last_sync);
+    };
+    window.addEventListener("reflip:extension-ready", handleReady);
+    window.addEventListener("reflip:status-response", handleStatus);
+    // Request status from extension
+    window.dispatchEvent(new CustomEvent("reflip:status-request"));
+    return () => {
+      window.removeEventListener("reflip:extension-ready", handleReady);
+      window.removeEventListener("reflip:status-response", handleStatus);
+    };
+  }, []);
 
   const fetchPhotos = async () => {
     if (!photoFetchId || !fetchUrl.trim()) return;
@@ -75,21 +92,27 @@ export default function Listings() {
     } finally { setPhotoFetching(false); }
   };
 
-  const syncFromPlatform = async (id: number) => {
-    setSyncId(id);
-    setSyncLoading(true);
-    setSyncResult(null);
-    try {
-      const r = await apiRequest("POST", `/api/listings/${id}/sync-from-platform`, {});
-      const data = await r.json();
-      if (data.error) throw new Error(data.error);
-      setSyncResult(data);
-      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
-    } catch (e: any) {
-      setSyncResult({ error: e.message });
-    } finally {
-      setSyncLoading(false);
-    }
+  const syncAllViaExtension = () => {
+    if (!extensionInstalled) return;
+    setSyncingAll(true);
+    const handleDone = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setSyncingAll(false);
+      window.removeEventListener("reflip:sync-done", handleDone);
+      if (detail?.error) {
+        toast({ title: "Sync error", description: detail.error, variant: "destructive" });
+      } else {
+        const updated = detail?.updated ?? 0;
+        const checked = detail?.checked ?? 0;
+        toast({ title: `Sync done`, description: `${updated} of ${checked} listings updated.` });
+        queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+        if (detail?.timestamp) setLastAutoSync(detail.timestamp);
+      }
+    };
+    window.addEventListener("reflip:sync-done", handleDone);
+    window.dispatchEvent(new CustomEvent("reflip:sync-request"));
+    // Timeout fallback
+    setTimeout(() => { setSyncingAll(false); window.removeEventListener("reflip:sync-done", handleDone); }, 60000);
   };
 
   const openQR = async (bagNumber: number) => {
@@ -190,9 +213,29 @@ export default function Listings() {
             <p className="text-[11px] sm:text-xs text-muted-foreground">{listings.length} items</p>
           </div>
         </div>
-        <Button size="sm" asChild className="rounded-xl gap-1.5 shrink-0">
-          <Link href="/listings/new"><Plus size={14} /> New</Link>
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Live sync button — uses extension bridge */}
+          {extensionInstalled ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={syncAllViaExtension}
+              disabled={syncingAll}
+              className="rounded-xl gap-1.5 text-xs h-8 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+              title={lastAutoSync ? `Last sync: ${new Date(lastAutoSync).toLocaleTimeString()}` : "Auto-syncs every 30 min"}
+            >
+              <RefreshCw size={12} className={syncingAll ? "animate-spin" : ""} />
+              <span className="hidden sm:inline">{syncingAll ? "Syncing..." : "Sync All"}</span>
+            </Button>
+          ) : (
+            <span className="text-[10px] text-muted-foreground/60 hidden sm:inline" title="Install the ReFlip extension for auto price sync">
+              Extension for auto-sync
+            </span>
+          )}
+          <Button size="sm" asChild className="rounded-xl gap-1.5">
+            <Link href="/listings/new"><Plus size={14} /> New</Link>
+          </Button>
+        </div>
       </header>
 
       {/* Filter bar — scrollable on mobile */}
@@ -265,8 +308,6 @@ export default function Listings() {
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
                 onFetchPhotos={() => { setPhotoFetchId(listing.id); setFetchUrl(""); }}
-                onSync={() => syncFromPlatform(listing.id)}
-                onAutoLink={() => {}}
               />
             ))}
           </div>
@@ -452,66 +493,6 @@ export default function Listings() {
         </DialogContent>
       </Dialog>
 
-      {/* ── SYNC FROM LIVE DIALOG ── */}
-      <Dialog open={syncId !== null} onOpenChange={() => { setSyncId(null); setSyncResult(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <RefreshCw size={15} className="text-primary" />
-              Sync from Live Listings
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {syncLoading && (
-              <div className="flex flex-col items-center py-6 gap-3">
-                <Loader2 size={24} className="animate-spin text-primary" />
-                <p className="text-xs text-muted-foreground">Fetching current data from linked platforms...</p>
-              </div>
-            )}
-            {syncResult && !syncResult.error && (
-              <div className="space-y-3">
-                {Object.entries(syncResult.sources || {}).map(([platform, data]: [string, any]) => (
-                  <div key={platform} className="bg-muted/40 rounded-xl p-3 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`badge-${platform} text-[10px] font-bold px-2 py-0.5 rounded-full uppercase`}>{platform}</span>
-                      {data.status === "sold" && <span className="text-[10px] text-red-500 font-semibold">SOLD</span>}
-                    </div>
-                    {data.price > 0 && <p className="text-xs">Price: <span className="font-mono font-semibold">${data.price}</span></p>}
-                    {data.title && <p className="text-xs text-muted-foreground truncate">{data.title}</p>}
-                  </div>
-                ))}
-                {syncResult.applied?.length > 0 ? (
-                  <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Updated in Reflip:</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{syncResult.applied.join(", ")}</p>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center">No changes needed — already up to date.</p>
-                )}
-                {Object.keys(syncResult.errors || {}).length > 0 && (
-                  <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-3">
-                    <p className="text-xs text-red-600 dark:text-red-400">
-                      {Object.entries(syncResult.errors).map(([p, e]) => `${p}: ${e}`).join("; ")}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-            {syncResult?.error && (
-              <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 text-center">
-                <p className="text-xs text-red-600 dark:text-red-400">{syncResult.error}</p>
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  Make sure this listing is linked to a live platform URL first. Use the extension to sync, or edit the listing and add a marketplace URL.
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setSyncId(null); setSyncResult(null); }}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ── ADD PHOTOS DIALOG ── */}
       <Dialog open={photoFetchId !== null} onOpenChange={() => { setPhotoFetchId(null); setFetchUrl(""); }}>
         <DialogContent className="max-w-sm">
@@ -609,11 +590,9 @@ interface RowProps {
   onExport: () => void;
   onQR: () => void;
   onFetchPhotos: () => void;
-  onSync: () => void;
-  onAutoLink: () => void;
 }
 
-function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos, onSync, onAutoLink }: RowProps) {
+function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos }: RowProps) {
   const status = listing.status;
   const bagNum = (listing as any).bagNumber;
   const images = getListingImages(listing);
@@ -729,9 +708,6 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onSync} className="gap-2 text-xs">
-                <RefreshCw size={12} /> Sync price from live
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={onFetchPhotos} className="gap-2 text-xs">
                 <ImagePlus size={12} /> Fetch URL photos
               </DropdownMenuItem>
