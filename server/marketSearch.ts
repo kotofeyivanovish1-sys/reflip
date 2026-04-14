@@ -391,19 +391,180 @@ export { searchEbay, searchVinted, searchDepop, searchPoshmark, emptyMarketData 
 export type { MarketData, MarketListing };
 
 export async function searchAllPlatforms(query: string, size?: string): Promise<MarketData[]> {
-  const [ebay, vinted, depop, poshmark] = await Promise.allSettled([
+  const [ebay, vinted, depop] = await Promise.allSettled([
     searchEbay(query, size),
     searchVinted(query, size),
     searchDepop(query, size),
-    searchPoshmark(query),
   ]);
 
   return [
     ebay.status === "fulfilled" ? ebay.value : emptyMarketData("ebay"),
     vinted.status === "fulfilled" ? vinted.value : emptyMarketData("vinted"),
     depop.status === "fulfilled" ? depop.value : emptyMarketData("depop"),
-    poshmark.status === "fulfilled" ? poshmark.value : emptyMarketData("poshmark"),
   ];
+}
+
+export async function fetchVintedListing(listingUrl: string): Promise<ScrapedListingData | null> {
+  // Extract item ID from Vinted URL — e.g. https://www.vinted.fr/items/1234567-title
+  const idMatch = listingUrl.match(/\/items\/(\d+)/);
+  if (!idMatch) return null;
+  const itemId = idMatch[1];
+
+  // Detect TLD from URL
+  const tldMatch = listingUrl.match(/vinted\.(\w{2,3})/);
+  const tld = tldMatch ? tldMatch[1] : "com";
+  const host = `www.vinted.${tld}`;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(`https://${host}/api/v2/items/${itemId}`, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": `https://${host}/`,
+      },
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const json = await res.json();
+      const item = json.item || json;
+      const images: string[] = [];
+      if (item.photos) {
+        for (const p of item.photos) {
+          const url = p.full_size_url || p.url || "";
+          if (url) images.push(url);
+        }
+      } else if (item.photo) {
+        const url = item.photo.full_size_url || item.photo.url || "";
+        if (url) images.push(url);
+      }
+      return {
+        title: item.title || "",
+        description: item.description || "",
+        price: parseFloat(item.price || item.total_item_price || "0"),
+        brand: item.brand_title || (typeof item.brand === "string" ? item.brand : item.brand?.title) || null,
+        size: item.size_title || (typeof item.size === "string" ? item.size : item.size?.title) || null,
+        condition: item.status || null,
+        category: null,
+        images,
+        url: listingUrl,
+      };
+    }
+  } catch (e: any) {
+    console.error(`[fetchVintedListing] API failed for ${listingUrl}: ${e.message}`);
+  }
+
+  // Fallback: scrape HTML page for JSON-LD structured data
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(listingUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const html = await res.text();
+      const ldMatch = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+      if (ldMatch) {
+        try {
+          const data = JSON.parse(ldMatch[1]);
+          const offers = Array.isArray(data.offers) ? data.offers[0] : data.offers;
+          const price = parseFloat(offers?.price || "0");
+          const status = offers?.availability?.includes("InStock") ? "active" : "sold";
+          return {
+            title: data.name || "",
+            description: data.description || "",
+            price,
+            brand: data.brand?.name || null,
+            size: null,
+            condition: null,
+            category: null,
+            images: Array.isArray(data.image) ? data.image : data.image ? [data.image] : [],
+            url: listingUrl,
+          };
+        } catch {}
+      }
+    }
+  } catch (e: any) {
+    console.error(`[fetchVintedListing] HTML fallback failed for ${listingUrl}: ${e.message}`);
+  }
+
+  return null;
+}
+
+export async function fetchEbayListing(listingUrl: string): Promise<ScrapedListingData | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(listingUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // Try JSON-LD first
+    const ldMatch = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+    if (ldMatch) {
+      try {
+        const data = JSON.parse(ldMatch[1]);
+        const offers = Array.isArray(data.offers) ? data.offers[0] : data.offers;
+        const price = parseFloat(offers?.price || offers?.lowPrice || "0");
+        if (data.name && price > 0) {
+          return {
+            title: data.name || "",
+            description: data.description || "",
+            price,
+            brand: data.brand?.name || null,
+            size: null,
+            condition: data.offers?.itemCondition?.replace("https://schema.org/", "") || null,
+            category: data.category || null,
+            images: Array.isArray(data.image) ? data.image : data.image ? [data.image] : [],
+            url: listingUrl,
+          };
+        }
+      } catch {}
+    }
+
+    // Fallback: parse price from HTML
+    const priceMatch = html.match(/itemprop="price"\s+content="([0-9.]+)"/) ||
+                       html.match(/"price"\s*:\s*"([0-9.]+)"/) ||
+                       html.match(/class="x-price-primary"[^>]*>[\s\S]*?\$([0-9.,]+)/);
+    const titleMatch = html.match(/<h1[^>]*class="[^"]*x-item-title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i) ||
+                       html.match(/<title>(.*?)\s*\|/i);
+    const price = priceMatch ? parseFloat(priceMatch[1].replace(",", "")) : 0;
+    const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+
+    if (title || price > 0) {
+      return {
+        title,
+        description: "",
+        price,
+        brand: null,
+        size: null,
+        condition: null,
+        category: null,
+        images: [],
+        url: listingUrl,
+      };
+    }
+  } catch (e: any) {
+    console.error(`[fetchEbayListing] Failed for ${listingUrl}: ${e.message}`);
+  }
+  return null;
 }
 
 export async function fetchDepopListing(listingUrl: string): Promise<ScrapedListingData | null> {

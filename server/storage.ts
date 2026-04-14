@@ -82,9 +82,12 @@ try { sqlite.exec(`ALTER TABLE scan_results ADD COLUMN user_id INTEGER`); } catc
 try { sqlite.exec(`ALTER TABLE bags ADD COLUMN user_id INTEGER`); } catch {}
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN depop_url TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN vinted_url TEXT`); } catch {}
-try { sqlite.exec(`ALTER TABLE listings ADD COLUMN poshmark_url TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN ebay_url TEXT`); } catch {}
 try { sqlite.exec(`ALTER TABLE users ADD COLUMN custom_background TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN depop_price REAL`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN vinted_price REAL`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN ebay_price REAL`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN last_auto_sync_at TEXT`); } catch {}
 
 // saved_deals table for Deal Finder
 sqlite.exec(`
@@ -148,8 +151,11 @@ function mapRow(row: any): Listing {
     bagNumber: row.bag_number ?? row.bagNumber ?? null,
     depopUrl: row.depop_url ?? row.depopUrl ?? null,
     vintedUrl: row.vinted_url ?? row.vintedUrl ?? null,
-    poshmarkUrl: row.poshmark_url ?? row.poshmarkUrl ?? null,
     ebayUrl: row.ebay_url ?? row.ebayUrl ?? null,
+    depopPrice: row.depop_price ?? row.depopPrice ?? null,
+    vintedPrice: row.vinted_price ?? row.vintedPrice ?? null,
+    ebayPrice: row.ebay_price ?? row.ebayPrice ?? null,
+    lastAutoSyncAt: row.last_auto_sync_at ?? row.lastAutoSyncAt ?? null,
   } as Listing;
 }
 
@@ -169,6 +175,7 @@ export interface IStorage {
   createListing(data: InsertListing, userId: number): Listing;
   updateListing(id: number, data: Partial<InsertListing>, userId: number): Listing | undefined;
   deleteListing(id: number, userId: number): void;
+  getAllActiveListingsWithUrls(): Listing[];
   // Scan results
   createScanResult(data: InsertScanResult, userId: number): ScanResult;
   getScanResults(userId: number): ScanResult[];
@@ -262,8 +269,8 @@ class SQLiteStorage implements IStorage {
     } catch {}
 
     const result = sqlite.prepare(`
-      INSERT INTO listings (user_id,title,description,brand,size,condition,category,cost_price,status,platform,listed_price,sold_price,sold_at,created_at,ai_texts,price_suggestions,image_url,scan_data,notes,bag_number,depop_url,vinted_url,poshmark_url,ebay_url)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *
+      INSERT INTO listings (user_id,title,description,brand,size,condition,category,cost_price,status,platform,listed_price,sold_price,sold_at,created_at,ai_texts,price_suggestions,image_url,scan_data,notes,bag_number,depop_url,vinted_url,ebay_url)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *
     `).get(
       userId,
       data.title || "Untitled", data.description || data.title || "—",
@@ -272,7 +279,7 @@ class SQLiteStorage implements IStorage {
       data.listedPrice ?? null, data.soldPrice ?? null, data.soldAt ?? null,
       now, data.aiTexts ?? null, data.priceSuggestions ?? null, data.imageUrl ?? null,
       (data as any).scanData ?? null, (data as any).notes ?? null, bagNumber,
-      (data as any).depopUrl ?? null, (data as any).vintedUrl ?? null, (data as any).poshmarkUrl ?? null, (data as any).ebayUrl ?? null
+      (data as any).depopUrl ?? null, (data as any).vintedUrl ?? null, (data as any).ebayUrl ?? null
     ) as any;
     return mapRow(result);
   }
@@ -289,7 +296,9 @@ class SQLiteStorage implements IStorage {
       soldPrice: "sold_price", soldAt: "sold_at", createdAt: "created_at",
       aiTexts: "ai_texts", priceSuggestions: "price_suggestions", imageUrl: "image_url",
       scanData: "scan_data", notes: "notes", bagNumber: "bag_number", userId: "user_id",
-      depopUrl: "depop_url", vintedUrl: "vinted_url", poshmarkUrl: "poshmark_url", ebayUrl: "ebay_url",
+      depopUrl: "depop_url", vintedUrl: "vinted_url", ebayUrl: "ebay_url",
+      depopPrice: "depop_price", vintedPrice: "vinted_price", ebayPrice: "ebay_price",
+      lastAutoSyncAt: "last_auto_sync_at",
     };
     const setClauses = fields.map(f => `${colMap[f] || f} = ?`).join(", ");
     const values = fields.map(f => (data as any)[f]);
@@ -299,6 +308,15 @@ class SQLiteStorage implements IStorage {
 
   deleteListing(id: number, userId: number): void {
     sqlite.prepare("DELETE FROM listings WHERE id = ? AND user_id = ?").run(id, userId);
+  }
+
+  getAllActiveListingsWithUrls(): Listing[] {
+    return sqlite.prepare(`
+      SELECT * FROM listings
+      WHERE status = 'active'
+        AND (depop_url IS NOT NULL OR vinted_url IS NOT NULL OR ebay_url IS NOT NULL)
+      ORDER BY id ASC
+    `).all().map(mapRow);
   }
 
   createScanResult(data: InsertScanResult, userId: number): ScanResult {
@@ -368,7 +386,7 @@ class SQLiteStorage implements IStorage {
     const totalProfit = totalRevenue - totalCost;
     const avgProfit = sold.length > 0 ? totalProfit / sold.length : 0;
 
-    const platforms = ["depop", "vinted", "poshmark", "ebay"];
+    const platforms = ["depop", "vinted", "ebay"];
     const platformBreakdown = platforms.map(p => {
       const pSold = sold.filter(l => l.platform === p);
       const pActive = active.filter(l => l.platform === p);
@@ -407,7 +425,7 @@ class SQLiteStorage implements IStorage {
   getPlatformAnalytics(userId: number) {
     const all = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ?`).all(userId).map(mapRow);
     const sold = all.filter(l => l.status === "sold");
-    const platforms = ["depop", "vinted", "poshmark", "ebay"];
+    const platforms = ["depop", "vinted", "ebay"];
     return platforms.map(p => {
       const pAll = all.filter(l => l.platform === p);
       const pSold = sold.filter(l => l.platform === p);

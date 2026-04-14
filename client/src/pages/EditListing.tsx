@@ -13,10 +13,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import type { Listing } from "@shared/schema";
 
-const PLATFORMS = ["depop", "vinted", "poshmark", "ebay"];
+const PLATFORMS = ["depop", "vinted", "ebay"];
 const CONDITIONS = ["new with tags", "like new", "very good", "good", "fair"];
 const PLATFORM_COLORS: Record<string, string> = {
-  depop: "#ff4e4e", vinted: "#09b1ba", poshmark: "#e94365", ebay: "#e43c24",
+  depop: "#ff4e4e", vinted: "#09b1ba", ebay: "#e43c24",
 };
 
 export default function EditListing() {

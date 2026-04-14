@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import sharp from "sharp";
-import { searchAllPlatforms, fetchPoshmarkListing, fetchDepopListing, searchEbay, searchVinted, searchDepop, searchPoshmark } from "./marketSearch";
+import { searchAllPlatforms, fetchDepopListing, searchEbay, searchVinted, searchDepop } from "./marketSearch";
 import type { MarketData, MarketListing } from "./marketSearch";
 import AdmZip from "adm-zip";
 
@@ -136,6 +136,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const url = `/uploads/${filename}`;
       storage.updateUserBackground(userId, url);
       res.json({ success: true, customBackground: url });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === MANUAL LISTING SYNC TRIGGER ===
+  app.post("/api/sync/run", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const { runAutoSync } = await import("./listingSync");
+      // Run in background — don't await
+      runAutoSync().catch(e => console.error("[sync] Error:", e.message));
+      res.json({ message: "Sync started in background" });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -278,7 +292,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       contentParts.push({
         type: "text",
-        text: `You are an experienced reseller who writes listings that sell fast on Depop, Vinted, Poshmark, and eBay. Your descriptions sound like a real person wrote them, never like AI.
+        text: `You are an experienced reseller who writes listings that sell fast on Depop, Vinted, and eBay. Your descriptions sound like a real person wrote them, never like AI.
 
 Seller notes: "${description || "see images"}"
 
@@ -287,7 +301,6 @@ From images + notes extract: brand, item type, color, material, size, condition,
 PRICING RULES (be realistic, not optimistic):
 - Depop: list price, seller nets ~87% after fees
 - Vinted: list price = net (0% seller fees)
-- Poshmark: seller nets 80% of list price
 - eBay: seller nets ~85% after fees
 
 DESCRIPTION STYLE:
@@ -339,10 +352,9 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
   "color": "color",
   "aesthetic": "aesthetic vibe",
   "platforms": {
-    "depop":    { "title": "short punchy title", "description": "full natural description following the style above", "listPrice": 35, "netAfterFees": 30, "feeNote": "~13% fees", "marketNote": "similar items sell $X-$Y" },
-    "vinted":   { "title": "vinted title",       "description": "full natural description following the style above", "listPrice": 28, "netAfterFees": 28, "feeNote": "0% seller fees", "marketNote": "vinted range" },
-    "poshmark": { "title": "poshmark title",     "description": "full natural description following the style above", "listPrice": 40, "netAfterFees": 32, "feeNote": "20% fee", "marketNote": "poshmark range" },
-    "ebay":     { "title": "eBay SEO title with keywords",     "description": "full natural description following the style above", "listPrice": 32, "netAfterFees": 27, "feeNote": "~15% fees", "marketNote": "ebay sold range" }
+    "depop":  { "title": "short punchy title", "description": "full natural description following the style above", "listPrice": 35, "netAfterFees": 30, "feeNote": "~13% fees", "marketNote": "similar items sell $X-$Y" },
+    "vinted": { "title": "vinted title",       "description": "full natural description following the style above", "listPrice": 28, "netAfterFees": 28, "feeNote": "0% seller fees", "marketNote": "vinted range" },
+    "ebay":   { "title": "eBay SEO title with keywords",     "description": "full natural description following the style above", "listPrice": 32, "netAfterFees": 27, "feeNote": "~15% fees", "marketNote": "ebay sold range" }
   },
   "hashtags": ["#brand", "#itemtype", "#color", "#aesthetic", "#style"],
   "profitabilityRating": "high",
@@ -374,11 +386,10 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
 
           marketContext += `\n\nPRICING INSTRUCTIONS:
 - eBay sold prices are the MOST RELIABLE indicator of real market value
-- Active listing prices on Depop/Vinted/Poshmark are 15-25% higher than actual sale prices
+- Active listing prices on Depop/Vinted are 15-25% higher than actual sale prices
 - Factor in platform fees when setting list price:
   * Depop: ~13% fee, so list higher to net your target
   * Vinted: 0% seller fee, list price = what you get
-  * Poshmark: 20% fee on sales over $15, so list higher
   * eBay: ~13-15% total fees (listing + payment)
 - Price to SELL, not to sit. Better to sell at fair price than list too high
 - Set each platform price independently based on that platform's market + fees`;
@@ -390,7 +401,6 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
           contentParts[contentParts.length - 1].text += `\n\nNo live market data available. Use your knowledge of typical resale prices for this type of item. Price realistically based on brand, condition, and current demand. Factor in platform fees:
 - Depop: ~13% fee
 - Vinted: 0% seller fee
-- Poshmark: 20% fee
 - eBay: ~13-15% fees`;
         }
       } catch (e: any) {
@@ -553,7 +563,6 @@ Respond in JSON:
   "platforms": {
     "depop": { "minPrice": 35, "maxPrice": 55, "score": 9, "reason": "..." },
     "vinted": { "minPrice": 28, "maxPrice": 40, "score": 7, "reason": "..." },
-    "poshmark": { "minPrice": 40, "maxPrice": 60, "score": 8, "reason": "..." },
     "ebay": { "minPrice": 30, "maxPrice": 50, "score": 6, "reason": "based on X sold items" }
   },
   "estimatedProfit": { "low": 20, "high": 45 },
@@ -614,7 +623,7 @@ Respond in JSON:
 
 Size: ${size}
 
-Based on what you see (brand, style, condition, era, fabric) and your knowledge of the resale market (Depop, Vinted, Poshmark, eBay), provide a detailed analysis.
+Based on what you see (brand, style, condition, era, fabric) and your knowledge of the resale market (Depop, Vinted, eBay), provide a detailed analysis.
 
 Respond in JSON:
 {
@@ -628,7 +637,6 @@ Respond in JSON:
   "platforms": {
     "depop": { "minPrice": 35, "maxPrice": 55, "score": 9, "reason": "..." },
     "vinted": { "minPrice": 28, "maxPrice": 40, "score": 7, "reason": "..." },
-    "poshmark": { "minPrice": 40, "maxPrice": 60, "score": 8, "reason": "..." },
     "ebay": { "minPrice": 30, "maxPrice": 50, "score": 6, "reason": "..." }
   },
   "estimatedProfit": { "low": 20, "high": 45 },
@@ -736,7 +744,12 @@ Respond with ONLY the improved description text, no JSON, no markdown fences.`;
 
 Listing: ${listing.title}
 Platform: ${listing.platform}
-Price: $${listing.listedPrice}
+Prices: ${[
+  (listing as any).depopPrice ? `Depop $${(listing as any).depopPrice}` : null,
+  (listing as any).vintedPrice ? `Vinted $${(listing as any).vintedPrice}` : null,
+  (listing as any).ebayPrice ? `eBay $${(listing as any).ebayPrice}` : null,
+  !(listing as any).depopPrice && !(listing as any).vintedPrice && !(listing as any).ebayPrice && listing.listedPrice ? `Listed $${listing.listedPrice}` : null,
+].filter(Boolean).join(", ") || "not set"}
 Condition: ${listing.condition}
 Description: ${listing.description}
 Days listed: ${listing.createdAt ? Math.floor((Date.now() - new Date(listing.createdAt).getTime()) / 86400000) : "unknown"}
@@ -833,21 +846,6 @@ Respond in JSON:
     }
   });
 
-  // === POSHMARK: FETCH LISTING DATA + PHOTOS ===
-  app.post("/api/poshmark/fetch", async (req, res) => {
-    const userId = requireAuth(req, res);
-    if (!userId) return;
-    const { url } = req.body;
-    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
-    try {
-      const data = await fetchPoshmarkListing(url);
-      if (!data) return void res.status(404).json({ error: "Could not fetch listing from Poshmark. Check the URL and try again." });
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
   // Fetch photos from external URL and attach to an existing listing
   app.post("/api/listings/:id/fetch-photos", async (req, res) => {
     const userId = requireAuth(req, res);
@@ -867,15 +865,8 @@ Respond in JSON:
           else errors.push("Depop: listing found but no images extracted");
         } catch (e: any) { errors.push(`Depop: ${e.message}`); }
       }
-      if (!data && url.includes("poshmark.com")) {
-        try {
-          const d = await fetchPoshmarkListing(url);
-          if (d && d.images && d.images.length > 0) data = d;
-          else errors.push("Poshmark: listing found but no images extracted");
-        } catch (e: any) { errors.push(`Poshmark: ${e.message}`); }
-      }
-      if (!data && !url.includes("depop.com") && !url.includes("poshmark.com")) {
-        errors.push("URL not recognized as Depop or Poshmark");
+      if (!data && !url.includes("depop.com")) {
+        errors.push("URL not recognized as Depop");
       }
 
       if (!data || data.images.length === 0) {
@@ -913,37 +904,6 @@ Respond in JSON:
     const imageUrl = JSON.stringify(validUrls);
     const updated = storage.updateListing(Number(req.params.id), { imageUrl } as any, userId);
     res.json({ images: validUrls, listing: updated });
-  });
-
-  // Import a full listing from Poshmark URL
-  app.post("/api/poshmark/import", async (req, res) => {
-    const userId = requireAuth(req, res);
-    if (!userId) return;
-    const { url, costPrice } = req.body;
-    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
-    try {
-      const data = await fetchPoshmarkListing(url);
-      if (!data) return void res.status(404).json({ error: "Could not fetch listing from Poshmark" });
-
-      const imageUrl = data.images.length > 0 ? JSON.stringify(data.images) : null;
-      const listing = storage.createListing({
-        title: data.title,
-        description: data.description,
-        brand: data.brand,
-        size: data.size,
-        condition: data.condition || "good",
-        category: data.category,
-        imageUrl,
-        costPrice: Number(costPrice) || 0,
-        listedPrice: data.price || null,
-        platform: "poshmark",
-        status: "active",
-      } as any, userId);
-
-      res.json(listing);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
   });
 
   // === IMPORT DEPOP LISTING ===
@@ -998,11 +958,6 @@ Respond in JSON:
         if (results.platform === "vinted" && !listing.vintedUrl) {
            const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
            if (match && match.url) updates.vintedUrl = match.url;
-        }
-        if (results.platform === "poshmark" && !listing.poshmarkUrl) {
-           const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
-           // Fallback to poshmark listing if url missing but id present
-           if (match && match.url) updates.poshmarkUrl = match.url;
         }
         if (results.platform === "ebay" && !listing.ebayUrl) {
            const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
