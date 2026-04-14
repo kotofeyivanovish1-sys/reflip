@@ -368,7 +368,7 @@ class SQLiteStorage implements IStorage {
     const totalProfit = totalRevenue - totalCost;
     const avgProfit = sold.length > 0 ? totalProfit / sold.length : 0;
 
-    const platforms = ["depop", "vinted", "poshmark", "ebay"];
+    const platforms = ["depop", "vinted", "ebay"];
     const platformBreakdown = platforms.map(p => {
       const pSold = sold.filter(l => l.platform === p);
       const pActive = active.filter(l => l.platform === p);
@@ -407,7 +407,7 @@ class SQLiteStorage implements IStorage {
   getPlatformAnalytics(userId: number) {
     const all = sqlite.prepare(`SELECT * FROM listings WHERE user_id = ?`).all(userId).map(mapRow);
     const sold = all.filter(l => l.status === "sold");
-    const platforms = ["depop", "vinted", "poshmark", "ebay"];
+    const platforms = ["depop", "vinted", "ebay"];
     return platforms.map(p => {
       const pAll = all.filter(l => l.platform === p);
       const pSold = sold.filter(l => l.platform === p);

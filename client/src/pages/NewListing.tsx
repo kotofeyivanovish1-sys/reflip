@@ -13,15 +13,15 @@ import { apiRequest, queryClient, getAuthHeaders } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 const PLATFORM_COLORS: Record<string, string> = {
-  depop: "#ff4e4e", vinted: "#09b1ba", poshmark: "#e94365", ebay: "#e43c24",
+  depop: "#ff4e4e", vinted: "#09b1ba", ebay: "#e43c24",
 };
 
 // Platform fee multipliers (what seller keeps)
 const PLATFORM_NETS: Record<string, number> = {
-  depop: 0.87, vinted: 1.00, poshmark: 0.80, ebay: 0.85,
+  depop: 0.87, vinted: 1.00, ebay: 0.85,
 };
 
-const PLATFORMS = ["depop", "vinted", "poshmark", "ebay"];
+const PLATFORMS = ["depop", "vinted", "ebay"];
 
 type Step = "input" | "analyzing" | "review" | "saved";
 

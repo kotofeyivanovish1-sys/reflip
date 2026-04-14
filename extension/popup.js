@@ -161,7 +161,7 @@ async function syncListings(listings, platform) {
   if (!res.ok) throw new Error("Could not fetch existing listings");
   const existing = await res.json();
 
-  const platformUrlField = `${platform}Url`; // depopUrl, poshmarkUrl, etc.
+  const platformUrlField = `${platform}Url`; // depopUrl, vintedUrl, ebayUrl
   let linked = 0;
   let updated = 0;
   let skipped = 0;
@@ -242,14 +242,13 @@ async function syncListings(listings, platform) {
           updates[platformUrlField] = item.url;
         }
 
-        // Update price if listing has none or is 0
-        if (item.price && item.price > 0 && (!match.listedPrice || match.listedPrice === 0)) {
+        // Always update price from the live platform (it's the source of truth)
+        if (item.price && item.price > 0 && item.price !== match.listedPrice) {
           updates.listedPrice = item.price;
         }
 
-        // Update description if listing has none or very short
-        if (item.description && item.description.length > 10 &&
-            (!match.description || match.description.length < 10)) {
+        // Always update description from live (user may have tweaked it on the platform)
+        if (item.description && item.description.length > 10) {
           updates.description = item.description;
         }
 

@@ -13,10 +13,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import type { Listing } from "@shared/schema";
 
-const PLATFORMS = ["depop", "vinted", "poshmark", "ebay"];
+const PLATFORMS = ["depop", "vinted", "ebay"];
 const CONDITIONS = ["new with tags", "like new", "very good", "good", "fair"];
 const PLATFORM_COLORS: Record<string, string> = {
-  depop: "#ff4e4e", vinted: "#09b1ba", poshmark: "#e94365", ebay: "#e43c24",
+  depop: "#ff4e4e", vinted: "#09b1ba", ebay: "#e43c24",
 };
 
 export default function EditListing() {
@@ -228,7 +228,7 @@ export default function EditListing() {
             {form.costPrice && form.listedPrice && (
               <div className="grid grid-cols-3 gap-2">
                 {PLATFORMS.map(plat => {
-                  const fee = plat === "vinted" ? 0 : plat === "poshmark" ? 0.20 : 0.13;
+                  const fee = plat === "vinted" ? 0 : 0.13;
                   const net = Number(form.listedPrice) * (1 - fee);
                   const profit = net - Number(form.costPrice);
                   const roi = ((profit / Number(form.costPrice)) * 100).toFixed(0);

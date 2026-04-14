@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, CheckCircle, Sparkles, ExternalLink, Copy, CheckCheck,
-  Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2
+  Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2, RefreshCw
 } from "lucide-react";
 import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,11 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Listing } from "@shared/schema";
 
-const PLATFORMS = ["all", "depop", "vinted", "poshmark", "ebay"];
+const PLATFORMS = ["all", "depop", "vinted", "ebay"];
 const STATUSES = ["all", "pending", "active", "sold", "draft"];
 
 const PLATFORM_DOT: Record<string, string> = {
-  depop: "#ff4e4e", vinted: "#09b1ba", poshmark: "#e94365", ebay: "#e43c24",
+  depop: "#ff4e4e", vinted: "#09b1ba", ebay: "#e43c24",
 };
 
 export default function Listings() {
@@ -43,6 +43,9 @@ export default function Listings() {
   const [fetchUrl, setFetchUrl] = useState("");
   const [photoFetching, setPhotoFetching] = useState(false);
   const [photoMode, setPhotoMode] = useState<"url" | "direct">("direct");
+  const [syncId, setSyncId] = useState<number | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncResult, setSyncResult] = useState<any>(null);
   const { toast } = useToast();
 
   const fetchPhotos = async () => {
@@ -70,6 +73,23 @@ export default function Listings() {
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally { setPhotoFetching(false); }
+  };
+
+  const syncFromPlatform = async (id: number) => {
+    setSyncId(id);
+    setSyncLoading(true);
+    setSyncResult(null);
+    try {
+      const r = await apiRequest("POST", `/api/listings/${id}/sync-from-platform`, {});
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      setSyncResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+    } catch (e: any) {
+      setSyncResult({ error: e.message });
+    } finally {
+      setSyncLoading(false);
+    }
   };
 
   const openQR = async (bagNumber: number) => {
@@ -245,6 +265,7 @@ export default function Listings() {
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
                 onFetchPhotos={() => { setPhotoFetchId(listing.id); setFetchUrl(""); }}
+                onSync={() => syncFromPlatform(listing.id)}
                 onAutoLink={() => {}}
               />
             ))}
@@ -264,7 +285,7 @@ export default function Listings() {
           <div className="space-y-4">
             {markSoldId && (() => {
               const l = listings.find((x: any) => x.id === markSoldId);
-              const platFee = l?.platform === "vinted" ? 0 : l?.platform === "poshmark" ? 0.20 : 0.13;
+              const platFee = l?.platform === "vinted" ? 0 : 0.13;
               const estNet = l?.listedPrice ? (l.listedPrice * (1 - platFee)).toFixed(0) : null;
               return l ? (
                 <div className="bg-muted/40 rounded-xl p-3 space-y-1">
@@ -396,7 +417,7 @@ export default function Listings() {
                 <p className="text-xs text-muted-foreground mt-0.5">{crosslistListing.brand} · Size: {crosslistListing.size} · {crosslistListing.condition}</p>
               </div>
               <p className="text-xs text-muted-foreground">Copy text for each platform, then paste into Crosslist or Vendoo.</p>
-              {["depop", "vinted", "poshmark", "ebay"].map(plat => {
+              {["depop", "vinted", "ebay"].map(plat => {
                 const prices = crosslistListing.priceSuggestions ? JSON.parse(crosslistListing.priceSuggestions) : {};
                 const price = prices[plat];
                 return (
@@ -427,6 +448,66 @@ export default function Listings() {
           )}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => { setCrosslistListing(null); setCopiedPlat(null); }}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── SYNC FROM LIVE DIALOG ── */}
+      <Dialog open={syncId !== null} onOpenChange={() => { setSyncId(null); setSyncResult(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw size={15} className="text-primary" />
+              Sync from Live Listings
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {syncLoading && (
+              <div className="flex flex-col items-center py-6 gap-3">
+                <Loader2 size={24} className="animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground">Fetching current data from linked platforms...</p>
+              </div>
+            )}
+            {syncResult && !syncResult.error && (
+              <div className="space-y-3">
+                {Object.entries(syncResult.sources || {}).map(([platform, data]: [string, any]) => (
+                  <div key={platform} className="bg-muted/40 rounded-xl p-3 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`badge-${platform} text-[10px] font-bold px-2 py-0.5 rounded-full uppercase`}>{platform}</span>
+                      {data.status === "sold" && <span className="text-[10px] text-red-500 font-semibold">SOLD</span>}
+                    </div>
+                    {data.price > 0 && <p className="text-xs">Price: <span className="font-mono font-semibold">${data.price}</span></p>}
+                    {data.title && <p className="text-xs text-muted-foreground truncate">{data.title}</p>}
+                  </div>
+                ))}
+                {syncResult.applied?.length > 0 ? (
+                  <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Updated in Reflip:</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{syncResult.applied.join(", ")}</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">No changes needed — already up to date.</p>
+                )}
+                {Object.keys(syncResult.errors || {}).length > 0 && (
+                  <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-3">
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      {Object.entries(syncResult.errors).map(([p, e]) => `${p}: ${e}`).join("; ")}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            {syncResult?.error && (
+              <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 text-center">
+                <p className="text-xs text-red-600 dark:text-red-400">{syncResult.error}</p>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Make sure this listing is linked to a live platform URL first. Use the extension to sync, or edit the listing and add a marketplace URL.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setSyncId(null); setSyncResult(null); }}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -464,7 +545,7 @@ export default function Listings() {
             {photoMode === "direct" ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Right-click photos on Depop/Poshmark → "Copy Image Address" and paste here. One URL per line.
+                  Right-click photos on Depop/Vinted → "Copy Image Address" and paste here. One URL per line.
                 </p>
                 <textarea
                   value={fetchUrl}
@@ -482,7 +563,7 @@ export default function Listings() {
                 <Input
                   value={fetchUrl}
                   onChange={e => setFetchUrl(e.target.value)}
-                  placeholder="https://depop.com/products/... or https://poshmark.com/listing/..."
+                  placeholder="https://depop.com/products/... or https://www.vinted.com/items/..."
                   className="rounded-xl text-sm"
                   autoFocus
                 />
@@ -528,10 +609,11 @@ interface RowProps {
   onExport: () => void;
   onQR: () => void;
   onFetchPhotos: () => void;
+  onSync: () => void;
   onAutoLink: () => void;
 }
 
-function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos, onAutoLink }: RowProps) {
+function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos, onSync, onAutoLink }: RowProps) {
   const status = listing.status;
   const bagNum = (listing as any).bagNumber;
   const images = getListingImages(listing);
@@ -549,7 +631,7 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
           <button
             onClick={onFetchPhotos}
             className="w-16 h-16 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-secondary/40 hover:text-secondary/60 transition-colors group"
-            title="Fetch photos from Depop/Poshmark"
+            title="Fetch photos from Depop"
           >
             <ImagePlus size={16} className="sm:mb-1 group-hover:scale-110 transition-transform" />
             <span className="text-[10px] font-medium hidden sm:block">Add Photo</span>
@@ -584,7 +666,6 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
             <div className="flex gap-1 ml-auto shrink-0">
                {(listing as any).depopUrl && <a href={(listing as any).depopUrl} target="_blank" rel="noreferrer" title="Depop link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.depop}}>d</a>}
                {(listing as any).vintedUrl && <a href={(listing as any).vintedUrl} target="_blank" rel="noreferrer" title="Vinted link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.vinted}}>v</a>}
-               {(listing as any).poshmarkUrl && <a href={(listing as any).poshmarkUrl} target="_blank" rel="noreferrer" title="Poshmark link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.poshmark}}>p</a>}
                {(listing as any).ebayUrl && <a href={(listing as any).ebayUrl} target="_blank" rel="noreferrer" title="eBay link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.ebay}}>e</a>}
             </div>
           </div>
@@ -648,6 +729,9 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onSync} className="gap-2 text-xs">
+                <RefreshCw size={12} /> Sync price from live
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onFetchPhotos} className="gap-2 text-xs">
                 <ImagePlus size={12} /> Fetch URL photos
               </DropdownMenuItem>

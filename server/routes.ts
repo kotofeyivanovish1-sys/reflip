@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import sharp from "sharp";
-import { searchAllPlatforms, fetchPoshmarkListing, fetchDepopListing, searchEbay, searchVinted, searchDepop, searchPoshmark } from "./marketSearch";
+import { searchAllPlatforms, fetchDepopListing, fetchVintedListing, fetchEbayListing, searchEbay, searchVinted, searchDepop } from "./marketSearch";
 import type { MarketData, MarketListing } from "./marketSearch";
 import AdmZip from "adm-zip";
 
@@ -278,7 +278,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       contentParts.push({
         type: "text",
-        text: `You are an experienced reseller who writes listings that sell fast on Depop, Vinted, Poshmark, and eBay. Your descriptions sound like a real person wrote them, never like AI.
+        text: `You are an experienced reseller who writes listings that sell fast on Depop, Vinted, and eBay. Your descriptions sound like a real person wrote them, never like AI.
 
 Seller notes: "${description || "see images"}"
 
@@ -287,7 +287,6 @@ From images + notes extract: brand, item type, color, material, size, condition,
 PRICING RULES (be realistic, not optimistic):
 - Depop: list price, seller nets ~87% after fees
 - Vinted: list price = net (0% seller fees)
-- Poshmark: seller nets 80% of list price
 - eBay: seller nets ~85% after fees
 
 DESCRIPTION STYLE:
@@ -341,7 +340,6 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
   "platforms": {
     "depop":    { "title": "short punchy title", "description": "full natural description following the style above", "listPrice": 35, "netAfterFees": 30, "feeNote": "~13% fees", "marketNote": "similar items sell $X-$Y" },
     "vinted":   { "title": "vinted title",       "description": "full natural description following the style above", "listPrice": 28, "netAfterFees": 28, "feeNote": "0% seller fees", "marketNote": "vinted range" },
-    "poshmark": { "title": "poshmark title",     "description": "full natural description following the style above", "listPrice": 40, "netAfterFees": 32, "feeNote": "20% fee", "marketNote": "poshmark range" },
     "ebay":     { "title": "eBay SEO title with keywords",     "description": "full natural description following the style above", "listPrice": 32, "netAfterFees": 27, "feeNote": "~15% fees", "marketNote": "ebay sold range" }
   },
   "hashtags": ["#brand", "#itemtype", "#color", "#aesthetic", "#style"],
@@ -374,11 +372,10 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
 
           marketContext += `\n\nPRICING INSTRUCTIONS:
 - eBay sold prices are the MOST RELIABLE indicator of real market value
-- Active listing prices on Depop/Vinted/Poshmark are 15-25% higher than actual sale prices
+- Active listing prices on Depop/Vinted are 15-25% higher than actual sale prices
 - Factor in platform fees when setting list price:
   * Depop: ~13% fee, so list higher to net your target
   * Vinted: 0% seller fee, list price = what you get
-  * Poshmark: 20% fee on sales over $15, so list higher
   * eBay: ~13-15% total fees (listing + payment)
 - Price to SELL, not to sit. Better to sell at fair price than list too high
 - Set each platform price independently based on that platform's market + fees`;
@@ -390,7 +387,6 @@ IMPORTANT: Respond with ONLY raw JSON, no markdown fences, no extra text.
           contentParts[contentParts.length - 1].text += `\n\nNo live market data available. Use your knowledge of typical resale prices for this type of item. Price realistically based on brand, condition, and current demand. Factor in platform fees:
 - Depop: ~13% fee
 - Vinted: 0% seller fee
-- Poshmark: 20% fee
 - eBay: ~13-15% fees`;
         }
       } catch (e: any) {
@@ -553,7 +549,6 @@ Respond in JSON:
   "platforms": {
     "depop": { "minPrice": 35, "maxPrice": 55, "score": 9, "reason": "..." },
     "vinted": { "minPrice": 28, "maxPrice": 40, "score": 7, "reason": "..." },
-    "poshmark": { "minPrice": 40, "maxPrice": 60, "score": 8, "reason": "..." },
     "ebay": { "minPrice": 30, "maxPrice": 50, "score": 6, "reason": "based on X sold items" }
   },
   "estimatedProfit": { "low": 20, "high": 45 },
@@ -614,7 +609,7 @@ Respond in JSON:
 
 Size: ${size}
 
-Based on what you see (brand, style, condition, era, fabric) and your knowledge of the resale market (Depop, Vinted, Poshmark, eBay), provide a detailed analysis.
+Based on what you see (brand, style, condition, era, fabric) and your knowledge of the resale market (Depop, Vinted, eBay), provide a detailed analysis.
 
 Respond in JSON:
 {
@@ -628,7 +623,6 @@ Respond in JSON:
   "platforms": {
     "depop": { "minPrice": 35, "maxPrice": 55, "score": 9, "reason": "..." },
     "vinted": { "minPrice": 28, "maxPrice": 40, "score": 7, "reason": "..." },
-    "poshmark": { "minPrice": 40, "maxPrice": 60, "score": 8, "reason": "..." },
     "ebay": { "minPrice": 30, "maxPrice": 50, "score": 6, "reason": "..." }
   },
   "estimatedProfit": { "low": 20, "high": 45 },
@@ -833,21 +827,6 @@ Respond in JSON:
     }
   });
 
-  // === POSHMARK: FETCH LISTING DATA + PHOTOS ===
-  app.post("/api/poshmark/fetch", async (req, res) => {
-    const userId = requireAuth(req, res);
-    if (!userId) return;
-    const { url } = req.body;
-    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
-    try {
-      const data = await fetchPoshmarkListing(url);
-      if (!data) return void res.status(404).json({ error: "Could not fetch listing from Poshmark. Check the URL and try again." });
-      res.json(data);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
   // Fetch photos from external URL and attach to an existing listing
   app.post("/api/listings/:id/fetch-photos", async (req, res) => {
     const userId = requireAuth(req, res);
@@ -867,15 +846,8 @@ Respond in JSON:
           else errors.push("Depop: listing found but no images extracted");
         } catch (e: any) { errors.push(`Depop: ${e.message}`); }
       }
-      if (!data && url.includes("poshmark.com")) {
-        try {
-          const d = await fetchPoshmarkListing(url);
-          if (d && d.images && d.images.length > 0) data = d;
-          else errors.push("Poshmark: listing found but no images extracted");
-        } catch (e: any) { errors.push(`Poshmark: ${e.message}`); }
-      }
-      if (!data && !url.includes("depop.com") && !url.includes("poshmark.com")) {
-        errors.push("URL not recognized as Depop or Poshmark");
+      if (!data) {
+        errors.push("URL not recognized as a supported platform (Depop)");
       }
 
       if (!data || data.images.length === 0) {
@@ -915,37 +887,6 @@ Respond in JSON:
     res.json({ images: validUrls, listing: updated });
   });
 
-  // Import a full listing from Poshmark URL
-  app.post("/api/poshmark/import", async (req, res) => {
-    const userId = requireAuth(req, res);
-    if (!userId) return;
-    const { url, costPrice } = req.body;
-    if (!url) return void res.status(400).json({ error: "Poshmark listing URL required" });
-    try {
-      const data = await fetchPoshmarkListing(url);
-      if (!data) return void res.status(404).json({ error: "Could not fetch listing from Poshmark" });
-
-      const imageUrl = data.images.length > 0 ? JSON.stringify(data.images) : null;
-      const listing = storage.createListing({
-        title: data.title,
-        description: data.description,
-        brand: data.brand,
-        size: data.size,
-        condition: data.condition || "good",
-        category: data.category,
-        imageUrl,
-        costPrice: Number(costPrice) || 0,
-        listedPrice: data.price || null,
-        platform: "poshmark",
-        status: "active",
-      } as any, userId);
-
-      res.json(listing);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
   // === IMPORT DEPOP LISTING ===
   app.post("/api/depop/import", async (req, res) => {
     const userId = requireAuth(req, res);
@@ -979,6 +920,97 @@ Respond in JSON:
     }
   });
 
+  // === SYNC LISTING FROM LIVE MARKETPLACE URLS ===
+  // Fetches current price + description from each linked platform URL and updates the listing
+  app.post("/api/listings/:id/sync-from-platform", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const listing = storage.getListing(Number(req.params.id), userId);
+      if (!listing) return void res.status(404).json({ error: "Listing not found" });
+
+      const sources: Record<string, any> = {};
+      const errors: Record<string, string> = {};
+
+      // Fetch from each linked platform in parallel
+      const fetches: Promise<void>[] = [];
+
+      if ((listing as any).depopUrl) {
+        fetches.push(
+          fetchDepopListing((listing as any).depopUrl)
+            .then(d => { if (d) sources.depop = d; })
+            .catch(e => { errors.depop = e.message; })
+        );
+      }
+      if ((listing as any).vintedUrl) {
+        fetches.push(
+          fetchVintedListing((listing as any).vintedUrl)
+            .then(d => { if (d) sources.vinted = d; })
+            .catch(e => { errors.vinted = e.message; })
+        );
+      }
+      if ((listing as any).ebayUrl) {
+        fetches.push(
+          fetchEbayListing((listing as any).ebayUrl)
+            .then(d => { if (d) sources.ebay = d; })
+            .catch(e => { errors.ebay = e.message; })
+        );
+      }
+
+      await Promise.all(fetches);
+
+      if (Object.keys(sources).length === 0) {
+        const errorDetail = Object.entries(errors).map(([p, e]) => `${p}: ${e}`).join("; ");
+        return void res.status(404).json({
+          error: "No linked platform URLs found or could not fetch any. Link this listing to a platform first.",
+          errors,
+        });
+      }
+
+      // Build updates: prefer the platform the listing is "primary" on,
+      // then fall back to whichever returned data
+      const primaryPlatform = listing.platform as string;
+      const primaryData = sources[primaryPlatform] || sources.depop || sources.vinted || sources.ebay;
+
+      const updates: any = {};
+
+      if (primaryData?.price && primaryData.price > 0) {
+        updates.listedPrice = primaryData.price;
+      }
+      if (primaryData?.description && primaryData.description.length > 10) {
+        updates.description = primaryData.description;
+      }
+      if (primaryData?.title && primaryData.title.length > 2) {
+        updates.title = primaryData.title;
+      }
+      // Mark as sold if the primary platform says so
+      if (primaryData?.status === "sold" && listing.status === "active") {
+        updates.status = "sold";
+      }
+
+      const updatedListing = Object.keys(updates).length > 0
+        ? storage.updateListing(Number(req.params.id), updates, userId)
+        : listing;
+
+      res.json({
+        success: true,
+        applied: Object.keys(updates),
+        sources: Object.fromEntries(
+          Object.entries(sources).map(([platform, d]) => [platform, {
+            price: d.price,
+            title: d.title?.slice(0, 60),
+            description: d.description?.slice(0, 120),
+            status: d.status,
+          }])
+        ),
+        errors,
+        listing: updatedListing,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // === AUTO-LINK CROSS PLATFORM ===
   app.post("/api/listings/:id/auto-link", async (req, res) => {
     const userId = requireAuth(req, res);
@@ -988,7 +1020,7 @@ Respond in JSON:
       if (!listing) return void res.status(404).json({ error: "Listing not found" });
 
       // We search other platforms using the exact title
-      // Usually, query without quotes is better for Vinted/Poshmark, then we filter by exact match
+      // Usually, query without quotes is better for Vinted/Depop, then we filter by exact match
       const marketData = await searchAllPlatforms(listing.title);
       
       const updates: any = {};
@@ -998,11 +1030,6 @@ Respond in JSON:
         if (results.platform === "vinted" && !listing.vintedUrl) {
            const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
            if (match && match.url) updates.vintedUrl = match.url;
-        }
-        if (results.platform === "poshmark" && !listing.poshmarkUrl) {
-           const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
-           // Fallback to poshmark listing if url missing but id present
-           if (match && match.url) updates.poshmarkUrl = match.url;
         }
         if (results.platform === "ebay" && !listing.ebayUrl) {
            const match = results.listings.find(l => l.title.toLowerCase().trim() === t);
@@ -1030,9 +1057,9 @@ Respond in JSON:
       { query: "Nike Dunk Low", category: "sneakers", buyPrice: { low: 30, high: 80 }, resalePrice: { low: 120, high: 300 }, demand: "high", trendReason: "Still the hottest silhouette, panda colorway especially", platforms: ["ebay", "depop"] },
       { query: "Y2K baby tee", category: "clothing", buyPrice: { low: 2, high: 8 }, resalePrice: { low: 25, high: 70 }, demand: "high", trendReason: "2000s nostalgia is peaking, graphic tees sell fast", platforms: ["depop", "vinted"] },
       { query: "vintage Levi's 501", category: "clothing", buyPrice: { low: 5, high: 20 }, resalePrice: { low: 45, high: 120 }, demand: "high", trendReason: "Timeless classic, vintage washes always in demand", platforms: ["depop", "ebay"] },
-      { query: "Polo Ralph Lauren sweater", category: "clothing", buyPrice: { low: 5, high: 15 }, resalePrice: { low: 35, high: 90 }, demand: "medium", trendReason: "Prep revival, cable knits and rugby stripes trending", platforms: ["poshmark", "ebay"] },
+      { query: "Polo Ralph Lauren sweater", category: "clothing", buyPrice: { low: 5, high: 15 }, resalePrice: { low: 35, high: 90 }, demand: "medium", trendReason: "Prep revival, cable knits and rugby stripes trending", platforms: ["depop", "ebay"] },
       { query: "Patagonia fleece", category: "clothing", buyPrice: { low: 10, high: 30 }, resalePrice: { low: 50, high: 150 }, demand: "high", trendReason: "Retro Snap-T fleeces are gorpcore staples", platforms: ["depop", "ebay"] },
-      { query: "Coach leather bag vintage", category: "accessories", buyPrice: { low: 8, high: 25 }, resalePrice: { low: 60, high: 180 }, demand: "high", trendReason: "Vintage Coach leather resurgence, Y2K aesthetic", platforms: ["depop", "poshmark"] },
+      { query: "Coach leather bag vintage", category: "accessories", buyPrice: { low: 8, high: 25 }, resalePrice: { low: 60, high: 180 }, demand: "high", trendReason: "Vintage Coach leather resurgence, Y2K aesthetic", platforms: ["depop", "vinted"] },
       { query: "Nintendo game vintage", category: "collectibles", buyPrice: { low: 3, high: 15 }, resalePrice: { low: 25, high: 150 }, demand: "medium", trendReason: "Retro gaming collectors pay premium for CIB games", platforms: ["ebay"] },
       { query: "vintage band tee 90s", category: "clothing", buyPrice: { low: 3, high: 20 }, resalePrice: { low: 40, high: 250 }, demand: "high", trendReason: "Single stitch band tees are grails, huge markup", platforms: ["depop", "ebay"] },
       { query: "Doc Martens 1460", category: "clothing", buyPrice: { low: 10, high: 30 }, resalePrice: { low: 50, high: 120 }, demand: "medium", trendReason: "Classic silhouette never goes out, vintage made in England versions premium", platforms: ["depop", "vinted"] },
@@ -1048,7 +1075,7 @@ Respond in JSON:
       const client = getAI();
       const prompt = `You are an expert reseller who knows the current secondhand fashion and goods market inside out.
 
-Based on current trends in resale (Depop, Vinted, Poshmark, eBay) as of 2024-2025, provide 8-10 trending search queries that have HIGH demand and good flip potential. Focus on items that:
+Based on current trends in resale (Depop, Vinted, eBay) as of 2024-2025, provide 8-10 trending search queries that have HIGH demand and good flip potential. Focus on items that:
 1. Are commonly found at thrift stores / garage sales / flea markets for cheap
 2. Have strong demand online with big price markup potential
 3. Are currently trending on TikTok, Instagram, or resale platforms

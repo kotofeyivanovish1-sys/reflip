@@ -2,13 +2,11 @@
   "manifest_version": 3,
   "name": "ReFlip Sync",
   "version": "1.0.0",
-  "description": "Syncs your Depop, Poshmark, eBay, and Vinted listings to ReFlip",
+  "description": "Syncs your Depop, eBay, and Vinted listings to ReFlip",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://www.depop.com/*",
     "https://depop.com/*",
-    "https://poshmark.com/*",
-    "https://www.poshmark.com/*",
     "https://www.ebay.com/*",
     "https://www.ebay.co.uk/*",
     "https://www.ebay.de/*",
@@ -33,11 +31,6 @@
     {
       "matches": ["https://www.depop.com/*", "https://depop.com/*"],
       "js": ["content-depop.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://poshmark.com/*", "https://www.poshmark.com/*"],
-      "js": ["content-poshmark.js"],
       "run_at": "document_idle"
     },
     {
