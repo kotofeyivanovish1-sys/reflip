@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import path from "path";
 import fs from "fs";
+import { startAutoSync } from "./listingSync";
 
 const app = express();
 const httpServer = createServer(app);
@@ -91,6 +92,9 @@ app.use((req, res, next) => {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
+
+  // Start automatic listing sync (every 2 hours)
+  startAutoSync();
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

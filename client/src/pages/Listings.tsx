@@ -19,11 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Listing } from "@shared/schema";
 
-const PLATFORMS = ["all", "depop", "vinted", "poshmark", "ebay"];
+const PLATFORMS = ["all", "depop", "vinted", "ebay"];
 const STATUSES = ["all", "pending", "active", "sold", "draft"];
 
 const PLATFORM_DOT: Record<string, string> = {
-  depop: "#ff4e4e", vinted: "#09b1ba", poshmark: "#e94365", ebay: "#e43c24",
+  depop: "#ff4e4e", vinted: "#09b1ba", ebay: "#e43c24",
 };
 
 export default function Listings() {
@@ -264,7 +264,7 @@ export default function Listings() {
           <div className="space-y-4">
             {markSoldId && (() => {
               const l = listings.find((x: any) => x.id === markSoldId);
-              const platFee = l?.platform === "vinted" ? 0 : l?.platform === "poshmark" ? 0.20 : 0.13;
+              const platFee = l?.platform === "vinted" ? 0 : 0.13;
               const estNet = l?.listedPrice ? (l.listedPrice * (1 - platFee)).toFixed(0) : null;
               return l ? (
                 <div className="bg-muted/40 rounded-xl p-3 space-y-1">
@@ -396,7 +396,7 @@ export default function Listings() {
                 <p className="text-xs text-muted-foreground mt-0.5">{crosslistListing.brand} · Size: {crosslistListing.size} · {crosslistListing.condition}</p>
               </div>
               <p className="text-xs text-muted-foreground">Copy text for each platform, then paste into Crosslist or Vendoo.</p>
-              {["depop", "vinted", "poshmark", "ebay"].map(plat => {
+              {["depop", "vinted", "ebay"].map(plat => {
                 const prices = crosslistListing.priceSuggestions ? JSON.parse(crosslistListing.priceSuggestions) : {};
                 const price = prices[plat];
                 return (
@@ -573,7 +573,12 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
           </div>
           <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground flex-wrap">
             <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70">Cost:</span> <span className="font-mono font-medium text-foreground">${listing.costPrice ?? "—"}</span></span>
-            <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70">Listed:</span> <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
+            {(listing as any).depopPrice != null && <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70" style={{color:PLATFORM_DOT.depop}}>Depop:</span> <span className="font-mono font-semibold text-foreground">${(listing as any).depopPrice}</span></span>}
+            {(listing as any).vintedPrice != null && <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70" style={{color:PLATFORM_DOT.vinted}}>Vinted:</span> <span className="font-mono font-semibold text-foreground">${(listing as any).vintedPrice}</span></span>}
+            {(listing as any).ebayPrice != null && <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70" style={{color:PLATFORM_DOT.ebay}}>eBay:</span> <span className="font-mono font-semibold text-foreground">${(listing as any).ebayPrice}</span></span>}
+            {(listing as any).depopPrice == null && (listing as any).vintedPrice == null && (listing as any).ebayPrice == null && (
+              <span className="flex items-center gap-1"><span className="text-[10px] sm:text-xs opacity-70">Listed:</span> <span className="font-mono font-semibold text-foreground">${listing.listedPrice ?? "—"}</span></span>
+            )}
             {listing.soldPrice != null && (
               <span className="text-emerald-500 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-1.5 sm:px-2 py-0.5 rounded-md border border-emerald-500/20 text-xs">
                 +${(listing.soldPrice - listing.costPrice).toFixed(0)} NET
@@ -584,7 +589,6 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
             <div className="flex gap-1 ml-auto shrink-0">
                {(listing as any).depopUrl && <a href={(listing as any).depopUrl} target="_blank" rel="noreferrer" title="Depop link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.depop}}>d</a>}
                {(listing as any).vintedUrl && <a href={(listing as any).vintedUrl} target="_blank" rel="noreferrer" title="Vinted link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.vinted}}>v</a>}
-               {(listing as any).poshmarkUrl && <a href={(listing as any).poshmarkUrl} target="_blank" rel="noreferrer" title="Poshmark link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.poshmark}}>p</a>}
                {(listing as any).ebayUrl && <a href={(listing as any).ebayUrl} target="_blank" rel="noreferrer" title="eBay link" className="w-4 h-4 sm:w-5 sm:h-5 rounded hover:opacity-80 flex items-center justify-center text-[9px] sm:text-[10px] text-white" style={{background:PLATFORM_DOT.ebay}}>e</a>}
             </div>
           </div>
