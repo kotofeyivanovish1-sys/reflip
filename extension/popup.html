@@ -84,6 +84,46 @@
 
     #login-section, #main-section { display: none; }
     .hidden { display: none !important; }
+
+    .unmatched-item {
+      background: #12121f;
+      border: 1px solid #2a2a3e;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 6px;
+    }
+    .unmatched-item .item-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #e0e0e5;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .unmatched-item .item-price {
+      font-size: 10px;
+      color: #888;
+      margin-bottom: 6px;
+    }
+    .unmatched-item select {
+      font-size: 11px;
+      padding: 5px 8px;
+      margin-bottom: 5px;
+    }
+    .btn-link {
+      width: 100%;
+      padding: 6px;
+      border-radius: 6px;
+      border: none;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white;
+    }
+    .btn-link:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-link.linked { background: #1a2e1a; color: #22c55e; cursor: default; }
   </style>
 </head>
 <body>
@@ -118,10 +158,16 @@
     <div class="section">
       <div class="section-title">Sync</div>
       <p style="font-size:11px;color:#888;margin-bottom:8px">
-        Open your Depop, Poshmark, eBay, or Vinted page, then click Link to connect platform listings with your ReFlip inventory.
+        Open your Depop, Vinted, or eBay page, then sync to connect listings with your ReFlip inventory.
       </p>
-      <button class="btn btn-primary" id="sync-btn">Link & Sync This Page</button>
-      <button class="btn btn-secondary" id="sync-all-btn" style="margin-top:6px">Link All My Listings</button>
+      <button class="btn btn-primary" id="sync-btn">Sync This Page</button>
+      <button class="btn btn-secondary" id="sync-all-btn" style="margin-top:6px">Sync All My Listings</button>
+    </div>
+
+    <!-- Unmatched items — shown after sync when items need manual linking -->
+    <div class="section hidden" id="unmatched-section">
+      <div class="section-title">Not linked — pick manually</div>
+      <div id="unmatched-list"></div>
     </div>
 
     <div class="section">
@@ -129,7 +175,7 @@
       <div class="stats">
         <div class="stat-card">
           <div class="value" id="synced-count">0</div>
-          <div class="label">Linked</div>
+          <div class="label">Updated</div>
         </div>
         <div class="stat-card">
           <div class="value" id="new-count">0</div>

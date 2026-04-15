@@ -98,12 +98,16 @@ $("#sync-btn").addEventListener("click", async () => {
   $("#sync-btn").textContent = "Syncing...";
 
   try {
+    // Hide previous unmatched section
+    $("#unmatched-section").classList.add("hidden");
+    $("#unmatched-list").innerHTML = "";
+
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error("No active tab");
 
     const results = await chrome.tabs.sendMessage(tab.id, { action: "scrape_page" });
     if (!results || !results.listings || results.listings.length === 0) {
-      throw new Error("No listings found on this page. Make sure you're on your closet/shop page.");
+      throw new Error("No listings found on this page. Make sure you're on your listing page.");
     }
 
     addLog(`Found ${results.listings.length} listings on ${results.platform}`);
@@ -113,19 +117,28 @@ $("#sync-btn").addEventListener("click", async () => {
     $("#new-count").textContent = stats.created;
     await chrome.storage.local.set({ reflip_stats: stats });
 
-    addLog(`Done! ${stats.linked || 0} linked, ${stats.created} unmatched`, "ok");
+    addLog(`Done! ${stats.synced} updated, ${stats.created} unmatched`, "ok");
+
+    // Show manual link UI for unmatched items
+    if (stats.unmatched && stats.unmatched.length > 0) {
+      await showUnmatchedItems(stats.unmatched, results.platform);
+    }
   } catch (e) {
     addLog(`Error: ${e.message}`, "err");
   } finally {
     $("#sync-btn").disabled = false;
-    $("#sync-btn").textContent = "Link & Sync This Page";
+    $("#sync-btn").textContent = "Sync This Page";
   }
 });
 
 // ─── Sync All ───
 $("#sync-all-btn").addEventListener("click", async () => {
   $("#sync-all-btn").disabled = true;
-  $("#sync-all-btn").textContent = "Linking...";
+  $("#sync-all-btn").textContent = "Syncing...";
+
+  // Hide previous unmatched section
+  $("#unmatched-section").classList.add("hidden");
+  $("#unmatched-list").innerHTML = "";
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -143,12 +156,16 @@ $("#sync-all-btn").addEventListener("click", async () => {
     $("#new-count").textContent = stats.created;
     await chrome.storage.local.set({ reflip_stats: stats });
 
-    addLog(`Done! ${stats.linked || 0} linked, ${stats.created} unmatched`, "ok");
+    addLog(`Done! ${stats.synced} updated, ${stats.created} unmatched`, "ok");
+
+    if (stats.unmatched && stats.unmatched.length > 0) {
+      await showUnmatchedItems(stats.unmatched, results.platform);
+    }
   } catch (e) {
     addLog(`Error: ${e.message}`, "err");
   } finally {
     $("#sync-all-btn").disabled = false;
-    $("#sync-all-btn").textContent = "Link All My Listings";
+    $("#sync-all-btn").textContent = "Sync All My Listings";
   }
 });
 
@@ -166,6 +183,7 @@ async function syncListings(listings, platform) {
   let linked = 0;
   let updated = 0;
   let skipped = 0;
+  const unmatchedItems = [];
 
   // Pre-compute all text for existing listings (title + description + brand)
   const existingIndex = existing.map((e) => ({
@@ -310,13 +328,100 @@ async function syncListings(listings, platform) {
       } else {
         addLog(`No match: "${item.title?.slice(0, 40)}" $${item.price}`, "err");
         skipped++;
+        unmatchedItems.push(item);
       }
     } catch (e) {
       addLog(`Error: ${item.title?.slice(0, 30)} — ${e.message}`, "err");
     }
   }
 
-  return { synced: linked + updated, created: skipped, linked };
+  return { synced: linked + updated, created: skipped, linked, unmatched: unmatchedItems };
+}
+
+// ─── Manual Link UI ───
+async function showUnmatchedItems(unmatchedItems, platform) {
+  // Fetch current ReFlip listings to populate dropdowns
+  const res = await fetch(`${config.serverUrl}/api/listings`, {
+    headers: { Authorization: `Bearer ${config.token}` },
+  });
+  if (!res.ok) return;
+  const allListings = await res.json();
+  const activeListings = allListings.filter(l => l.status === "active" || l.status === "pending");
+
+  const section = $("#unmatched-section");
+  const list = $("#unmatched-list");
+  list.innerHTML = "";
+
+  for (const item of unmatchedItems) {
+    const div = document.createElement("div");
+    div.className = "unmatched-item";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "item-title";
+    titleEl.textContent = item.title || "Untitled";
+
+    const priceEl = document.createElement("div");
+    priceEl.className = "item-price";
+    priceEl.textContent = item.price ? `$${item.price}` : "No price";
+
+    const select = document.createElement("select");
+    select.innerHTML = `<option value="">— Select ReFlip listing —</option>` +
+      activeListings.map(l =>
+        `<option value="${l.id}">${l.title?.slice(0, 45)} ${l.brand ? `(${l.brand})` : ""} ${l.listedPrice ? `$${l.listedPrice}` : ""}</option>`
+      ).join("");
+
+    const btn = document.createElement("button");
+    btn.className = "btn-link";
+    btn.textContent = "Link & Sync";
+    btn.onclick = async () => {
+      const listingId = select.value;
+      if (!listingId) return;
+      btn.disabled = true;
+      btn.textContent = "Linking...";
+      try {
+        await linkItemManually(item, platform, Number(listingId));
+        btn.textContent = "Linked ✓";
+        btn.className = "btn-link linked";
+        select.disabled = true;
+        addLog(`Manually linked: "${item.title?.slice(0, 30)}"`, "ok");
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Link & Sync";
+        addLog(`Link failed: ${e.message}`, "err");
+      }
+    };
+
+    div.appendChild(titleEl);
+    div.appendChild(priceEl);
+    div.appendChild(select);
+    div.appendChild(btn);
+    list.appendChild(div);
+  }
+
+  section.classList.remove("hidden");
+}
+
+async function linkItemManually(item, platform, listingId) {
+  const platformUrlField = `${platform}Url`;
+  const platformPriceField = `${platform}Price`;
+
+  const updates = {};
+  if (item.url) updates[platformUrlField] = item.url;
+  if (item.price && item.price > 0) updates[platformPriceField] = item.price;
+  if (item.description && item.description.length > 10) updates.description = item.description;
+  if (item.title && item.title.length > 2) updates.title = item.title;
+  if (item.brand) updates.brand = item.brand;
+  if (item.size) updates.size = item.size;
+
+  const res = await fetch(`${config.serverUrl}/api/listings/${listingId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.token}`,
+    },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Server error: ${res.status}`);
 }
 
 function normalizeText(text) {
