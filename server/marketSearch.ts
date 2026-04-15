@@ -3,7 +3,6 @@
  * eBay: sold listings (actual completed sales)
  * Vinted: active listings (best available — sold items not public)
  * Depop: active listings via web search
- * Poshmark: active listings via web search
  */
 
 interface MarketListing {
@@ -48,7 +47,7 @@ async function searchEbay(query: string, size?: string): Promise<MarketData> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
-    
+
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
@@ -61,7 +60,7 @@ async function searchEbay(query: string, size?: string): Promise<MarketData> {
       redirect: "follow",
     });
     clearTimeout(timer);
-    
+
     if (!res.ok) return emptyMarketData("ebay");
     const html = await res.text();
     const listings = parseEbaySold(html);
@@ -218,66 +217,10 @@ async function searchDepop(query: string, size?: string): Promise<MarketData> {
   }
 }
 
-// Poshmark - active listings
-async function searchPoshmark(query: string): Promise<MarketData> {
-  try {
-    const res = await fetch(
-      `https://poshmark.com/search?query=${encodeURIComponent(query)}&type=listings`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      }
-    );
-    const html = await res.text();
-    
-    // Poshmark embeds data in __NEXT_DATA__
-    const jsonMatch = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-    if (!jsonMatch) return emptyMarketData("poshmark");
-
-    const data = JSON.parse(jsonMatch[1]);
-    const props = data?.props?.pageProps;
-    
-    // Try different paths for listings
-    let posts = props?.posts || props?.searchResults?.posts || props?.data?.posts || [];
-    if (!Array.isArray(posts)) posts = [];
-
-    const listings: MarketListing[] = posts
-      .filter((p: any) => p?.price_amount?.val || p?.price)
-      .slice(0, 20)
-      .map((p: any) => ({
-        platform: "poshmark",
-        title: p.title || p.description || "",
-        price: parseFloat(p.price_amount?.val || p.price || "0"),
-        condition: p.condition,
-        size: p.size,
-        url: p.id ? `https://poshmark.com/listing/${p.id}` : undefined,
-        sold: false,
-      }));
-
-    const prices = listings.map(l => l.price).filter(p => p > 0);
-    return {
-      platform: "poshmark",
-      listings,
-      soldCount: 0,
-      avgPrice: Math.round(avg(prices) * 100) / 100,
-      minPrice: prices.length ? Math.min(...prices) : 0,
-      maxPrice: prices.length ? Math.max(...prices) : 0,
-      medianPrice: Math.round(median(prices) * 100) / 100,
-      sampleTitles: listings.slice(0, 5).map(l => l.title),
-    };
-  } catch (e) {
-    return emptyMarketData("poshmark");
-  }
-}
-
 function emptyMarketData(platform: string): MarketData {
   return { platform, listings: [], soldCount: 0, avgPrice: 0, minPrice: 0, maxPrice: 0, medianPrice: 0, sampleTitles: [] };
 }
 
-// Fetch a single Poshmark listing page — extracts photos, title, price, description, etc.
 export interface ScrapedListingData {
   title: string;
   description: string;
@@ -288,106 +231,10 @@ export interface ScrapedListingData {
   category: string | null;
   images: string[];  // full-res image URLs
   url: string;
+  status?: string;  // "active" | "sold"
 }
 
-export async function fetchPoshmarkListing(listingUrl: string): Promise<ScrapedListingData | null> {
-  let url = listingUrl.trim();
-  if (!url.startsWith("http")) {
-    url = `https://poshmark.com/listing/${url}`;
-  }
-
-  const attempts: string[] = [];
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
-
-  let html = "";
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      redirect: "follow",
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`Poshmark returned HTTP ${res.status}`);
-    html = await res.text();
-  } catch (e: any) {
-    clearTimeout(timer);
-    throw new Error(`Could not fetch Poshmark page: ${e.message}`);
-  }
-
-  const images: string[] = [];
-  let listingData: any = null;
-
-  // 1) Try __NEXT_DATA__ JSON
-  const jsonMatch = html.match(/id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-  if (jsonMatch) {
-    try {
-      const data = JSON.parse(jsonMatch[1]);
-      const props = data?.props?.pageProps;
-      listingData = props?.listing || props?.data?.listing || props?.post || props?.data?.post || null;
-
-      if (listingData) {
-        const pics = listingData.pictures || listingData.photos || listingData.cover_shot_pictures || [];
-        for (const pic of pics) {
-          const imgUrl = pic.url_original || pic.url_full || pic.url_large || pic.url || pic;
-          if (typeof imgUrl === "string" && imgUrl.startsWith("http")) images.push(imgUrl);
-        }
-        if (listingData.cover_shot?.url_original || listingData.cover_shot?.url_full) {
-          const coverUrl = listingData.cover_shot.url_original || listingData.cover_shot.url_full;
-          if (!images.includes(coverUrl)) images.unshift(coverUrl);
-        }
-      } else {
-        attempts.push("__NEXT_DATA__ found but listing object missing");
-      }
-    } catch { attempts.push("__NEXT_DATA__ JSON parse failed"); }
-  } else {
-    attempts.push("No __NEXT_DATA__ in HTML");
-  }
-
-  // 2) Fallback: og:image meta tags
-  if (images.length === 0) {
-    const ogRegex = /<meta\s+(?:property|name)="og:image"\s+content="([^"]+)"/gi;
-    let ogMatch;
-    while ((ogMatch = ogRegex.exec(html)) !== null) {
-      if (ogMatch[1] && !images.includes(ogMatch[1])) images.push(ogMatch[1]);
-    }
-    if (images.length === 0) attempts.push("No og:image meta tags found");
-  }
-
-  // 3) Fallback: Poshmark CDN URLs in HTML
-  if (images.length === 0) {
-    const cdnRegex = /https:\/\/di2ponv0v5otw\.cloudfront\.net\/[^\s"']+/g;
-    let cdnMatch;
-    while ((cdnMatch = cdnRegex.exec(html)) !== null) {
-      const clean = cdnMatch[0].replace(/&amp;/g, "&");
-      if (!images.includes(clean)) images.push(clean);
-    }
-    if (images.length === 0) attempts.push("No CDN image URLs in HTML");
-  }
-
-  if (images.length === 0) {
-    console.error(`[fetchPoshmarkListing] No images found:`, attempts);
-    throw new Error(`Poshmark page loaded but no images found: ${attempts.join("; ")}`);
-  }
-
-  return {
-    title: listingData?.title || listingData?.display_title || "",
-    description: listingData?.description || "",
-    price: parseFloat(listingData?.price_amount?.val || listingData?.original_price_amount?.val || listingData?.price || "0"),
-    brand: listingData?.brand?.name || listingData?.brand_name || listingData?.brand || null,
-    size: listingData?.size?.display || listingData?.size_display || listingData?.size || null,
-    condition: listingData?.condition || listingData?.inventory?.condition || null,
-    category: listingData?.category_v2?.display || listingData?.department?.display || listingData?.category || null,
-    images,
-    url,
-  };
-}
-
-export { searchEbay, searchVinted, searchDepop, searchPoshmark, emptyMarketData };
+export { searchEbay, searchVinted, searchDepop, emptyMarketData };
 export type { MarketData, MarketListing };
 
 export async function searchAllPlatforms(query: string, size?: string): Promise<MarketData[]> {
@@ -759,6 +606,168 @@ export async function fetchDepopListing(listingUrl: string): Promise<ScrapedList
     condition: apiData?.condition || null,
     category: apiData?.category?.name || apiData?.category || null,
     images,
-    url: listingUrl
+    url: listingUrl,
+    status: apiData?.sold ? "sold" : "active",
   };
+}
+
+// Fetch a single Vinted listing by URL — extracts price, description, status
+export async function fetchVintedListing(listingUrl: string): Promise<ScrapedListingData | null> {
+  // Extract item ID: https://www.vinted.com/items/1234567890-some-title
+  const idMatch = listingUrl.match(/\/items\/(\d+)/);
+  if (!idMatch) throw new Error("Could not extract item ID from Vinted URL");
+  const itemId = idMatch[1];
+
+  let host = "www.vinted.com";
+  try { host = new URL(listingUrl).hostname; } catch {}
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    // 1) Try Vinted internal API
+    const res = await fetch(`https://${host}/api/v2/items/${itemId}`, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": `https://${host}/`,
+      },
+    });
+    clearTimeout(timer);
+
+    if (res.ok) {
+      const data = await res.json();
+      const item = data.item || data;
+      if (item.id) {
+        const images: string[] = [];
+        const photos = item.photos || (item.photo ? [item.photo] : []);
+        for (const photo of photos) {
+          const url = photo.full_size_url || photo.url || "";
+          if (url) images.push(url);
+        }
+        return {
+          title: item.title || "",
+          description: item.description || "",
+          price: parseFloat(item.price?.amount || item.price || "0"),
+          brand: item.brand_title || item.brand?.title || null,
+          size: item.size_title || item.size?.title || null,
+          condition: item.status || null,
+          category: item.category?.title || null,
+          images,
+          url: listingUrl,
+          status: item.is_closed || item.is_hidden ? "sold" : "active",
+        };
+      }
+    }
+
+    // 2) Fallback: fetch HTML page and parse JSON-LD / og tags
+    const pageRes = await fetch(listingUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    if (!pageRes.ok) throw new Error(`Vinted returned HTTP ${pageRes.status}`);
+    const html = await pageRes.text();
+
+    // Try JSON-LD
+    const jsonLdMatch = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+    if (jsonLdMatch) {
+      try {
+        const ld = JSON.parse(jsonLdMatch[1]);
+        if (ld.name || ld["@type"] === "Product") {
+          const images: string[] = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+          return {
+            title: ld.name || "",
+            description: ld.description || "",
+            price: parseFloat(ld.offers?.price || "0"),
+            brand: ld.brand?.name || null,
+            size: null,
+            condition: ld.offers?.itemCondition?.replace("https://schema.org/", "") || null,
+            category: null,
+            images,
+            url: listingUrl,
+            status: ld.offers?.availability?.includes("InStock") ? "active" : "sold",
+          };
+        }
+      } catch {}
+    }
+
+    // og:title / og:description fallback
+    const title = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i)?.[1] || "";
+    const description = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/i)?.[1] || "";
+    const priceMatch = html.match(/<meta[^>]+property="og:price:amount"[^>]+content="([^"]+)"/i);
+    const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+    const imageMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
+    const images = imageMatch ? [imageMatch[1]] : [];
+
+    return { title, description, price, brand: null, size: null, condition: null, category: null, images, url: listingUrl, status: "active" };
+  } catch (e: any) {
+    clearTimeout(timer);
+    throw new Error(`Could not fetch Vinted listing: ${e.message}`);
+  }
+}
+
+// Fetch a single eBay listing by URL — extracts current price, title, status
+export async function fetchEbayListing(listingUrl: string): Promise<ScrapedListingData | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const res = await fetch(listingUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      redirect: "follow",
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`eBay returned HTTP ${res.status}`);
+    const html = await res.text();
+
+    // Try JSON-LD structured data
+    const jsonLdMatch = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+    if (jsonLdMatch) {
+      try {
+        const ld = JSON.parse(jsonLdMatch[1]);
+        if (ld["@type"] === "Product" || ld.name) {
+          const images: string[] = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+          const inStock = ld.offers?.availability?.includes("InStock");
+          return {
+            title: ld.name || "",
+            description: ld.description || "",
+            price: parseFloat(ld.offers?.price || "0"),
+            brand: ld.brand?.name || null,
+            size: null,
+            condition: ld.offers?.itemCondition?.replace("https://schema.org/", "") || null,
+            category: null,
+            images,
+            url: listingUrl,
+            status: inStock ? "active" : "sold",
+          };
+        }
+      } catch {}
+    }
+
+    // Fallback: og tags + DOM patterns
+    const title = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i)?.[1]
+      || html.match(/<h1[^>]*class="[^"]*x-item-title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]+>/g, "").trim()
+      || "";
+    const description = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/i)?.[1] || "";
+    const priceMatch = html.match(/itemprop="price"[^>]+content="([^"]+)"/i) || html.match(/class="[^"]*x-price-primary[^"]*"[^>]*>[\s\S]*?\$?([\d,.]+)/i);
+    const price = priceMatch ? parseFloat(priceMatch[1].replace(",", "")) : 0;
+    const imageMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
+    const images = imageMatch ? [imageMatch[1]] : [];
+
+    // Check if listing is ended
+    const isEnded = /listing ended|item sold|no longer available/i.test(html);
+
+    return { title, description, price, brand: null, size: null, condition: null, category: null, images, url: listingUrl, status: isEnded ? "sold" : "active" };
+  } catch (e: any) {
+    clearTimeout(timer);
+    throw new Error(`Could not fetch eBay listing: ${e.message}`);
+  }
 }

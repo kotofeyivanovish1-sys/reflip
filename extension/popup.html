@@ -28,7 +28,9 @@
     .dot { width: 8px; height: 8px; border-radius: 50%; }
     .dot.green { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
     .dot.red { background: #ef4444; }
-    .dot.yellow { background: #f59e0b; }
+    .dot.yellow { background: #f59e0b; animation: pulse 1.5s infinite; }
+
+    @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:0.4 } }
 
     input {
       width: 100%;
@@ -56,7 +58,28 @@
     .btn:hover { opacity: 0.9; }
     .btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; }
     .btn-secondary { background: #1a1a2e; color: #e0e0e5; border: 1px solid #2a2a3e; }
+    .btn-refresh { background: linear-gradient(135deg, #06b6d4, #0891b2); color: white; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .auto-sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #22c55e18;
+      color: #22c55e;
+      border: 1px solid #22c55e30;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .auto-sync-badge .dot { width: 6px; height: 6px; }
+
+    .last-sync {
+      font-size: 10px;
+      color: #666;
+      margin-top: 6px;
+    }
 
     .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .stat-card {
@@ -130,7 +153,7 @@
   <div class="header">
     <div>
       <h1>ReFlip Sync</h1>
-      <small>Listing monitor & sync</small>
+      <small>Live price monitor & auto-sync</small>
     </div>
   </div>
 
@@ -149,14 +172,32 @@
   <!-- Main -->
   <div id="main-section">
     <div class="section">
-      <div class="status">
-        <div class="dot green" id="status-dot"></div>
-        <span id="status-text">Connected</span>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="status">
+          <div class="dot green" id="status-dot"></div>
+          <span id="status-text">Connected</span>
+        </div>
+        <div class="auto-sync-badge">
+          <div class="dot green"></div>
+          Auto-sync ON
+        </div>
       </div>
+      <div class="last-sync" id="last-sync-text">Last sync: checking...</div>
     </div>
 
+    <!-- Auto-sync Refresh All -->
     <div class="section">
-      <div class="section-title">Sync</div>
+      <div class="section-title">Live Sync</div>
+      <p style="font-size:11px;color:#888;margin-bottom:8px">
+        Auto-syncs prices &amp; descriptions every 30 min. Click to refresh now.
+      </p>
+      <button class="btn btn-refresh" id="refresh-all-btn">Refresh All Linked Listings</button>
+      <div id="refresh-status" style="font-size:11px;color:#888;margin-top:6px;display:none"></div>
+    </div>
+
+    <!-- Sync from page & manual link -->
+    <div class="section">
+      <div class="section-title">Sync from Page</div>
       <p style="font-size:11px;color:#888;margin-bottom:8px">
         Open your Depop, Vinted, or eBay page, then sync to connect listings with your ReFlip inventory.
       </p>
@@ -171,7 +212,7 @@
     </div>
 
     <div class="section">
-      <div class="section-title">Last Sync</div>
+      <div class="section-title">Last Link Session</div>
       <div class="stats">
         <div class="stat-card">
           <div class="value" id="synced-count">0</div>

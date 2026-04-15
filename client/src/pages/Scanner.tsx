@@ -282,7 +282,7 @@ export default function Scanner() {
     setResult(null);
   };
 
-  const PLATFORMS = ["depop", "vinted", "poshmark", "ebay"];
+  const PLATFORMS = ["depop", "vinted", "ebay"];
 
   return (
     <div className="flex flex-col h-full">
@@ -359,7 +359,7 @@ export default function Scanner() {
                   </div>
                 </div>
                 {Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-16 skeleton" />)}
-                <p className="text-xs text-muted-foreground text-center">Fetching live prices from eBay, Vinted, Depop, Poshmark...</p>
+                <p className="text-xs text-muted-foreground text-center">Fetching live prices from eBay, Vinted, Depop...</p>
               </CardContent>
             </Card>
           )}
@@ -440,7 +440,7 @@ export default function Scanner() {
               <Select value={takePlatform} onValueChange={setTakePlatform}>
                 <SelectTrigger data-testid="take-platform-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["depop","vinted","poshmark","ebay"].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  {["depop","vinted","ebay"].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

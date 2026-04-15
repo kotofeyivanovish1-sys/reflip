@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import sharp from "sharp";
-import { searchAllPlatforms, fetchDepopListing, searchEbay, searchVinted, searchDepop } from "./marketSearch";
+import { searchAllPlatforms, fetchDepopListing, fetchVintedListing, fetchEbayListing, searchEbay, searchVinted, searchDepop } from "./marketSearch";
 import type { MarketData, MarketListing } from "./marketSearch";
 import AdmZip from "adm-zip";
 
@@ -162,6 +162,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const { status, platform } = req.query as { status?: string; platform?: string };
     const data = storage.getListings(userId, status, platform);
     res.json(data);
+  });
+
+  // Returns all active listings that have at least one platform URL linked
+  // Used by the browser extension for background auto-sync
+  app.get("/api/listings/linked", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const all = storage.getListings(userId, "active");
+    const linked = all.filter((l: any) => l.depopUrl || l.vintedUrl || l.ebayUrl);
+    res.json(linked);
   });
 
   app.get("/api/listings/:id", (req, res) => {
@@ -939,6 +949,97 @@ Respond in JSON:
     }
   });
 
+  // === SYNC LISTING FROM LIVE MARKETPLACE URLS ===
+  // Fetches current price + description from each linked platform URL and updates the listing
+  app.post("/api/listings/:id/sync-from-platform", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const listing = storage.getListing(Number(req.params.id), userId);
+      if (!listing) return void res.status(404).json({ error: "Listing not found" });
+
+      const sources: Record<string, any> = {};
+      const errors: Record<string, string> = {};
+
+      // Fetch from each linked platform in parallel
+      const fetches: Promise<void>[] = [];
+
+      if ((listing as any).depopUrl) {
+        fetches.push(
+          fetchDepopListing((listing as any).depopUrl)
+            .then(d => { if (d) sources.depop = d; })
+            .catch(e => { errors.depop = e.message; })
+        );
+      }
+      if ((listing as any).vintedUrl) {
+        fetches.push(
+          fetchVintedListing((listing as any).vintedUrl)
+            .then(d => { if (d) sources.vinted = d; })
+            .catch(e => { errors.vinted = e.message; })
+        );
+      }
+      if ((listing as any).ebayUrl) {
+        fetches.push(
+          fetchEbayListing((listing as any).ebayUrl)
+            .then(d => { if (d) sources.ebay = d; })
+            .catch(e => { errors.ebay = e.message; })
+        );
+      }
+
+      await Promise.all(fetches);
+
+      if (Object.keys(sources).length === 0) {
+        const errorDetail = Object.entries(errors).map(([p, e]) => `${p}: ${e}`).join("; ");
+        return void res.status(404).json({
+          error: "No linked platform URLs found or could not fetch any. Link this listing to a platform first.",
+          errors,
+        });
+      }
+
+      // Build updates: prefer the platform the listing is "primary" on,
+      // then fall back to whichever returned data
+      const primaryPlatform = listing.platform as string;
+      const primaryData = sources[primaryPlatform] || sources.depop || sources.vinted || sources.ebay;
+
+      const updates: any = {};
+
+      if (primaryData?.price && primaryData.price > 0) {
+        updates.listedPrice = primaryData.price;
+      }
+      if (primaryData?.description && primaryData.description.length > 10) {
+        updates.description = primaryData.description;
+      }
+      if (primaryData?.title && primaryData.title.length > 2) {
+        updates.title = primaryData.title;
+      }
+      // Mark as sold if the primary platform says so
+      if (primaryData?.status === "sold" && listing.status === "active") {
+        updates.status = "sold";
+      }
+
+      const updatedListing = Object.keys(updates).length > 0
+        ? storage.updateListing(Number(req.params.id), updates, userId)
+        : listing;
+
+      res.json({
+        success: true,
+        applied: Object.keys(updates),
+        sources: Object.fromEntries(
+          Object.entries(sources).map(([platform, d]) => [platform, {
+            price: d.price,
+            title: d.title?.slice(0, 60),
+            description: d.description?.slice(0, 120),
+            status: d.status,
+          }])
+        ),
+        errors,
+        listing: updatedListing,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // === AUTO-LINK CROSS PLATFORM ===
   app.post("/api/listings/:id/auto-link", async (req, res) => {
     const userId = requireAuth(req, res);
@@ -948,7 +1049,7 @@ Respond in JSON:
       if (!listing) return void res.status(404).json({ error: "Listing not found" });
 
       // We search other platforms using the exact title
-      // Usually, query without quotes is better for Vinted/Poshmark, then we filter by exact match
+      // Usually, query without quotes is better for Vinted/Depop, then we filter by exact match
       const marketData = await searchAllPlatforms(listing.title);
       
       const updates: any = {};
@@ -985,9 +1086,9 @@ Respond in JSON:
       { query: "Nike Dunk Low", category: "sneakers", buyPrice: { low: 30, high: 80 }, resalePrice: { low: 120, high: 300 }, demand: "high", trendReason: "Still the hottest silhouette, panda colorway especially", platforms: ["ebay", "depop"] },
       { query: "Y2K baby tee", category: "clothing", buyPrice: { low: 2, high: 8 }, resalePrice: { low: 25, high: 70 }, demand: "high", trendReason: "2000s nostalgia is peaking, graphic tees sell fast", platforms: ["depop", "vinted"] },
       { query: "vintage Levi's 501", category: "clothing", buyPrice: { low: 5, high: 20 }, resalePrice: { low: 45, high: 120 }, demand: "high", trendReason: "Timeless classic, vintage washes always in demand", platforms: ["depop", "ebay"] },
-      { query: "Polo Ralph Lauren sweater", category: "clothing", buyPrice: { low: 5, high: 15 }, resalePrice: { low: 35, high: 90 }, demand: "medium", trendReason: "Prep revival, cable knits and rugby stripes trending", platforms: ["poshmark", "ebay"] },
+      { query: "Polo Ralph Lauren sweater", category: "clothing", buyPrice: { low: 5, high: 15 }, resalePrice: { low: 35, high: 90 }, demand: "medium", trendReason: "Prep revival, cable knits and rugby stripes trending", platforms: ["depop", "ebay"] },
       { query: "Patagonia fleece", category: "clothing", buyPrice: { low: 10, high: 30 }, resalePrice: { low: 50, high: 150 }, demand: "high", trendReason: "Retro Snap-T fleeces are gorpcore staples", platforms: ["depop", "ebay"] },
-      { query: "Coach leather bag vintage", category: "accessories", buyPrice: { low: 8, high: 25 }, resalePrice: { low: 60, high: 180 }, demand: "high", trendReason: "Vintage Coach leather resurgence, Y2K aesthetic", platforms: ["depop", "poshmark"] },
+      { query: "Coach leather bag vintage", category: "accessories", buyPrice: { low: 8, high: 25 }, resalePrice: { low: 60, high: 180 }, demand: "high", trendReason: "Vintage Coach leather resurgence, Y2K aesthetic", platforms: ["depop", "vinted"] },
       { query: "Nintendo game vintage", category: "collectibles", buyPrice: { low: 3, high: 15 }, resalePrice: { low: 25, high: 150 }, demand: "medium", trendReason: "Retro gaming collectors pay premium for CIB games", platforms: ["ebay"] },
       { query: "vintage band tee 90s", category: "clothing", buyPrice: { low: 3, high: 20 }, resalePrice: { low: 40, high: 250 }, demand: "high", trendReason: "Single stitch band tees are grails, huge markup", platforms: ["depop", "ebay"] },
       { query: "Doc Martens 1460", category: "clothing", buyPrice: { low: 10, high: 30 }, resalePrice: { low: 50, high: 120 }, demand: "medium", trendReason: "Classic silhouette never goes out, vintage made in England versions premium", platforms: ["depop", "vinted"] },
@@ -1003,7 +1104,7 @@ Respond in JSON:
       const client = getAI();
       const prompt = `You are an expert reseller who knows the current secondhand fashion and goods market inside out.
 
-Based on current trends in resale (Depop, Vinted, Poshmark, eBay) as of 2024-2025, provide 8-10 trending search queries that have HIGH demand and good flip potential. Focus on items that:
+Based on current trends in resale (Depop, Vinted, eBay) as of 2024-2025, provide 8-10 trending search queries that have HIGH demand and good flip potential. Focus on items that:
 1. Are commonly found at thrift stores / garage sales / flea markets for cheap
 2. Have strong demand online with big price markup potential
 3. Are currently trending on TikTok, Instagram, or resale platforms

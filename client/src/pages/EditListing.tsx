@@ -228,7 +228,7 @@ export default function EditListing() {
             {form.costPrice && form.listedPrice && (
               <div className="grid grid-cols-3 gap-2">
                 {PLATFORMS.map(plat => {
-                  const fee = plat === "vinted" ? 0 : plat === "poshmark" ? 0.20 : 0.13;
+                  const fee = plat === "vinted" ? 0 : 0.13;
                   const net = Number(form.listedPrice) * (1 - fee);
                   const profit = net - Number(form.costPrice);
                   const roi = ((profit / Number(form.costPrice)) * 100).toFixed(0);

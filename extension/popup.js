@@ -12,6 +12,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     config.token = stored.reflip_token;
     config.email = stored.reflip_email || "";
     showMain();
+    // Load last sync status
+    loadSyncStatus();
   } else {
     showLogin();
   }
@@ -26,6 +28,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("#new-count").textContent = reflip_stats.created || 0;
   }
 });
+
+async function loadSyncStatus() {
+  try {
+    const status = await chrome.storage.local.get(["reflip_last_sync", "reflip_sync_updated", "reflip_sync_count"]);
+    const el = $("#last-sync-text");
+    if (!el) return;
+    if (status.reflip_last_sync) {
+      const d = new Date(status.reflip_last_sync);
+      const timeStr = d.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" });
+      const dateStr = d.toLocaleDateString("en", { month: "short", day: "numeric" });
+      el.textContent = `Last sync: ${dateStr} ${timeStr} — ${status.reflip_sync_updated || 0} updated`;
+    } else {
+      el.textContent = "Last sync: never (will run in ~30 min)";
+    }
+  } catch {}
+}
 
 function showLogin() {
   $("#login-section").style.display = "block";
@@ -90,6 +108,36 @@ $("#disconnect-btn").addEventListener("click", async () => {
   await chrome.storage.local.remove(["reflip_server", "reflip_token", "reflip_email"]);
   config = { serverUrl: "", token: "", email: "" };
   showLogin();
+});
+
+// ─── Refresh All Linked Listings (uses background.js) ───
+$("#refresh-all-btn").addEventListener("click", async () => {
+  const btn = $("#refresh-all-btn");
+  const statusEl = $("#refresh-status");
+  btn.disabled = true;
+  btn.textContent = "Syncing...";
+  statusEl.style.display = "block";
+  statusEl.textContent = "Fetching live prices from platforms...";
+
+  try {
+    const result = await chrome.runtime.sendMessage({ action: "sync_all_linked" });
+    if (result && result.error) {
+      statusEl.textContent = `Error: ${result.error}`;
+      statusEl.style.color = "#ef4444";
+    } else if (result) {
+      const { checked = 0, updated = 0 } = result;
+      statusEl.textContent = `Done! ${updated} of ${checked} listings updated.`;
+      statusEl.style.color = "#22c55e";
+      loadSyncStatus();
+    }
+  } catch (e) {
+    statusEl.textContent = `Error: ${e.message}`;
+    statusEl.style.color = "#ef4444";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Refresh All Linked Listings";
+    setTimeout(() => { statusEl.style.display = "none"; }, 5000);
+  }
 });
 
 // ─── Sync Current Page ───

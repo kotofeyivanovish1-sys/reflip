@@ -60,7 +60,6 @@ interface TrendItem {
 const PLATFORM_COLORS: Record<string, string> = {
   depop: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   vinted: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
-  poshmark: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
   ebay: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
 };
 
@@ -322,7 +321,7 @@ export default function DealFinder() {
                   </div>
                   <p className="text-sm font-medium">Scanning all platforms...</p>
                   <p className="text-xs text-muted-foreground text-center max-w-sm">
-                    Searching Depop, Vinted, Poshmark for underpriced listings and comparing against eBay sold prices
+                    Searching Depop, Vinted for underpriced listings and comparing against eBay sold prices
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -596,7 +595,7 @@ export default function DealFinder() {
                       </div>
                       <div>
                         <p className="text-xs font-semibold">1. Search</p>
-                        <p className="text-[10px] text-muted-foreground">We scan Depop, Vinted, Poshmark for active listings</p>
+                        <p className="text-[10px] text-muted-foreground">We scan Depop, Vinted for active listings</p>
                       </div>
                     </div>
                     <div className="flex gap-2">

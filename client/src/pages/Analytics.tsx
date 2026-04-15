@@ -9,7 +9,6 @@ import { TrendingUp, Target, BarChart3 } from "lucide-react";
 const PLATFORM_COLORS: Record<string, string> = {
   depop: "#ff4e4e",
   vinted: "#09b1ba",
-  poshmark: "#e94365",
   ebay: "#e43c24",
 };
 

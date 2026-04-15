@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, CheckCircle, Sparkles, ExternalLink, Copy, CheckCheck,
-  Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2
+  Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2, RefreshCw
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -43,7 +43,27 @@ export default function Listings() {
   const [fetchUrl, setFetchUrl] = useState("");
   const [photoFetching, setPhotoFetching] = useState(false);
   const [photoMode, setPhotoMode] = useState<"url" | "direct">("direct");
+  const [extensionInstalled, setExtensionInstalled] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [lastAutoSync, setLastAutoSync] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Detect extension and get last sync status
+  useEffect(() => {
+    const handleReady = () => setExtensionInstalled(true);
+    const handleStatus = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.reflip_last_sync) setLastAutoSync(detail.reflip_last_sync);
+    };
+    window.addEventListener("reflip:extension-ready", handleReady);
+    window.addEventListener("reflip:status-response", handleStatus);
+    // Request status from extension
+    window.dispatchEvent(new CustomEvent("reflip:status-request"));
+    return () => {
+      window.removeEventListener("reflip:extension-ready", handleReady);
+      window.removeEventListener("reflip:status-response", handleStatus);
+    };
+  }, []);
 
   const fetchPhotos = async () => {
     if (!photoFetchId || !fetchUrl.trim()) return;
@@ -70,6 +90,29 @@ export default function Listings() {
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally { setPhotoFetching(false); }
+  };
+
+  const syncAllViaExtension = () => {
+    if (!extensionInstalled) return;
+    setSyncingAll(true);
+    const handleDone = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setSyncingAll(false);
+      window.removeEventListener("reflip:sync-done", handleDone);
+      if (detail?.error) {
+        toast({ title: "Sync error", description: detail.error, variant: "destructive" });
+      } else {
+        const updated = detail?.updated ?? 0;
+        const checked = detail?.checked ?? 0;
+        toast({ title: `Sync done`, description: `${updated} of ${checked} listings updated.` });
+        queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+        if (detail?.timestamp) setLastAutoSync(detail.timestamp);
+      }
+    };
+    window.addEventListener("reflip:sync-done", handleDone);
+    window.dispatchEvent(new CustomEvent("reflip:sync-request"));
+    // Timeout fallback
+    setTimeout(() => { setSyncingAll(false); window.removeEventListener("reflip:sync-done", handleDone); }, 60000);
   };
 
   const openQR = async (bagNumber: number) => {
@@ -170,9 +213,29 @@ export default function Listings() {
             <p className="text-[11px] sm:text-xs text-muted-foreground">{listings.length} items</p>
           </div>
         </div>
-        <Button size="sm" asChild className="rounded-xl gap-1.5 shrink-0">
-          <Link href="/listings/new"><Plus size={14} /> New</Link>
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Live sync button — uses extension bridge */}
+          {extensionInstalled ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={syncAllViaExtension}
+              disabled={syncingAll}
+              className="rounded-xl gap-1.5 text-xs h-8 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+              title={lastAutoSync ? `Last sync: ${new Date(lastAutoSync).toLocaleTimeString()}` : "Auto-syncs every 30 min"}
+            >
+              <RefreshCw size={12} className={syncingAll ? "animate-spin" : ""} />
+              <span className="hidden sm:inline">{syncingAll ? "Syncing..." : "Sync All"}</span>
+            </Button>
+          ) : (
+            <span className="text-[10px] text-muted-foreground/60 hidden sm:inline" title="Install the ReFlip extension for auto price sync">
+              Extension for auto-sync
+            </span>
+          )}
+          <Button size="sm" asChild className="rounded-xl gap-1.5">
+            <Link href="/listings/new"><Plus size={14} /> New</Link>
+          </Button>
+        </div>
       </header>
 
       {/* Filter bar — scrollable on mobile */}
@@ -245,7 +308,6 @@ export default function Listings() {
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
                 onFetchPhotos={() => { setPhotoFetchId(listing.id); setFetchUrl(""); }}
-                onAutoLink={() => {}}
               />
             ))}
           </div>
@@ -464,7 +526,7 @@ export default function Listings() {
             {photoMode === "direct" ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Right-click photos on Depop/Poshmark → "Copy Image Address" and paste here. One URL per line.
+                  Right-click photos on Depop/Vinted → "Copy Image Address" and paste here. One URL per line.
                 </p>
                 <textarea
                   value={fetchUrl}
@@ -482,7 +544,7 @@ export default function Listings() {
                 <Input
                   value={fetchUrl}
                   onChange={e => setFetchUrl(e.target.value)}
-                  placeholder="https://depop.com/products/... or https://poshmark.com/listing/..."
+                  placeholder="https://depop.com/products/... or https://www.vinted.com/items/..."
                   className="rounded-xl text-sm"
                   autoFocus
                 />
@@ -528,10 +590,9 @@ interface RowProps {
   onExport: () => void;
   onQR: () => void;
   onFetchPhotos: () => void;
-  onAutoLink: () => void;
 }
 
-function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos, onAutoLink }: RowProps) {
+function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos }: RowProps) {
   const status = listing.status;
   const bagNum = (listing as any).bagNumber;
   const images = getListingImages(listing);
@@ -549,7 +610,7 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
           <button
             onClick={onFetchPhotos}
             className="w-16 h-16 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl shrink-0 bg-muted/30 border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground/40 hover:border-secondary/40 hover:text-secondary/60 transition-colors group"
-            title="Fetch photos from Depop/Poshmark"
+            title="Fetch photos from Depop"
           >
             <ImagePlus size={16} className="sm:mb-1 group-hover:scale-110 transition-transform" />
             <span className="text-[10px] font-medium hidden sm:block">Add Photo</span>
