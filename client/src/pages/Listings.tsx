@@ -566,7 +566,7 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
             )}
             <p className="font-semibold text-sm sm:text-base truncate max-w-[140px] sm:max-w-[280px] md:max-w-none">{listing.title}</p>
             <span className={`badge-${status} text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{status}</span>
-            <span className={`badge-${listing.platform} text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{listing.platform}</span>
+            <span className={listing.platform === "poshmark" ? "text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider bg-muted text-muted-foreground border border-border/50" : `badge-${listing.platform} text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider`}>{listing.platform === "poshmark" ? "poshmark (legacy)" : listing.platform}</span>
             {listing.brand && (
               <span className="text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0 border border-border/50 hidden sm:inline-flex">{listing.brand}</span>
             )}
