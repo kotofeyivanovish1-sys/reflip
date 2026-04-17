@@ -103,6 +103,8 @@ async function fetchMemberItemsViaApi(memberId) {
           if (imgUrl) images.push(imgUrl);
         }
 
+        const favorites = pickNumV(item.favourite_count, item.favouritesCount, item.favorites_count, item.num_favourites, item.likes_count);
+        const views = pickNumV(item.view_count, item.viewCount, item.views_count, item.views);
         listings.push({
           title: item.title || "",
           description: item.description || "",
@@ -113,6 +115,8 @@ async function fetchMemberItemsViaApi(memberId) {
           status: item.is_closed || item.is_hidden ? "sold" : "active",
           images,
           url: `https://${host}/items/${item.id}`,
+          favorites,
+          views,
         });
       }
 
@@ -125,6 +129,16 @@ async function fetchMemberItemsViaApi(memberId) {
   }
 
   return listings;
+}
+
+// Pick the first finite numeric candidate
+function pickNumV(...xs) {
+  for (const x of xs) {
+    if (x == null) continue;
+    const n = typeof x === "number" ? x : parseInt(String(x), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 async function scrapeVintedItemPage() {

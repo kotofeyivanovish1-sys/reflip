@@ -217,6 +217,48 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ success: true });
   });
 
+  // === LIVE ENGAGEMENT: lookup by platform URL (used by browser extension) ===
+  app.get("/api/listings/by-url", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const url = String(req.query.url || "");
+    if (!url) return void res.status(400).json({ error: "url required" });
+    const found = storage.getListingByUrl(userId, url);
+    if (!found) return void res.status(404).json({ error: "No listing for that URL" });
+    res.json({ id: found.id });
+  });
+
+  // === LIVE ENGAGEMENT: push real stats from browser extension or manual UI ===
+  // Accepts { platform, views?, likes?, favorites?, watchers?, currentPrice? }
+  app.post("/api/listings/:id/engagement", (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const id = Number(req.params.id);
+    const listing = storage.getListing(id, userId);
+    if (!listing) return void res.status(404).json({ error: "Not found" });
+
+    const { platform, views, likes, favorites, watchers, currentPrice } = req.body || {};
+    if (!["depop", "vinted", "ebay"].includes(platform)) {
+      return void res.status(400).json({ error: "platform must be depop, vinted, or ebay" });
+    }
+    const updates: any = { lastEngagementSyncAt: new Date().toISOString() };
+    if (platform === "depop") {
+      if (views != null) updates.depopViews = Number(views);
+      if (likes != null) updates.depopLikes = Number(likes);
+      if (currentPrice != null) updates.depopPrice = Number(currentPrice);
+    } else if (platform === "vinted") {
+      if (views != null) updates.vintedViews = Number(views);
+      if (favorites != null) updates.vintedFavorites = Number(favorites);
+      if (currentPrice != null) updates.vintedPrice = Number(currentPrice);
+    } else if (platform === "ebay") {
+      if (views != null) updates.ebayViews = Number(views);
+      if (watchers != null) updates.ebayWatchers = Number(watchers);
+      if (currentPrice != null) updates.ebayPrice = Number(currentPrice);
+    }
+    const result = storage.updateListing(id, updates, userId);
+    res.json(result);
+  });
+
   // === DOWNLOAD IMAGES ZIP ===
   app.get("/api/listings/:id/download-images", (req, res) => {
     const userId = requireAuth(req, res);
@@ -788,6 +830,109 @@ Respond in JSON:
       const _parsed = safeParseJSON(text);
       if (!_parsed) return void res.status(500).json({ error: "AI parsing failed" });
       res.json(_parsed);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === AI: LIVE LISTING ADVICE (uses real engagement data) ===
+  // Body: { listingId: number, manualStats?: { platform, views, favorites, watchers } }
+  app.post("/api/ai/listing-advice", async (req, res) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    const { listingId, manualStats } = req.body || {};
+    const listing = storage.getListing(Number(listingId), userId);
+    if (!listing) return void res.status(404).json({ error: "Listing not found" });
+
+    try {
+      const client = getAI();
+      const l: any = listing;
+
+      // If manualStats provided, overlay them before computing
+      const depopViews = manualStats?.platform === "depop" ? manualStats.views : l.depopViews;
+      const depopLikes = manualStats?.platform === "depop" ? manualStats.favorites : l.depopLikes;
+      const vintedViews = manualStats?.platform === "vinted" ? manualStats.views : l.vintedViews;
+      const vintedFavs = manualStats?.platform === "vinted" ? manualStats.favorites : l.vintedFavorites;
+      const ebayViews = manualStats?.platform === "ebay" ? manualStats.views : l.ebayViews;
+      const ebayWatchers = manualStats?.platform === "ebay" ? manualStats.watchers : l.ebayWatchers;
+
+      const daysListed = l.createdAt
+        ? Math.floor((Date.now() - new Date(l.createdAt).getTime()) / 86400000)
+        : null;
+
+      const engagementLines: string[] = [];
+      if (depopViews != null || depopLikes != null) {
+        const rate = depopViews && depopViews > 0 ? ((depopLikes ?? 0) / depopViews * 100).toFixed(1) : null;
+        engagementLines.push(`Depop: ${depopViews ?? "?"} views, ${depopLikes ?? "?"} likes${rate ? ` (${rate}% like rate)` : ""}${l.depopPrice ? ` @ $${l.depopPrice}` : ""}`);
+      }
+      if (vintedViews != null || vintedFavs != null) {
+        const rate = vintedViews && vintedViews > 0 ? ((vintedFavs ?? 0) / vintedViews * 100).toFixed(1) : null;
+        engagementLines.push(`Vinted: ${vintedViews ?? "?"} views, ${vintedFavs ?? "?"} favorites${rate ? ` (${rate}% fav rate)` : ""}${l.vintedPrice ? ` @ €${l.vintedPrice}` : ""}`);
+      }
+      if (ebayViews != null || ebayWatchers != null) {
+        engagementLines.push(`eBay: ${ebayViews ?? "?"} views, ${ebayWatchers ?? "?"} watchers${l.ebayPrice ? ` @ $${l.ebayPrice}` : ""}`);
+      }
+
+      // Market comparison
+      const searchQuery = `${l.brand || ""} ${l.title || ""}`.trim().slice(0, 80);
+      let marketLines = "No market data.";
+      try {
+        const market = await searchAllPlatforms(searchQuery, l.size);
+        marketLines = market
+          .map((m: any) => `${m.platform}: median $${m.medianPrice || "?"}, avg $${m.avgPrice || "?"}, range $${m.minPrice || "?"}-${m.maxPrice || "?"} (${m.soldCount || 0} comps)`)
+          .join("\n");
+      } catch {}
+
+      const prompt = `You are an elite reselling coach analyzing REAL listing performance data. Give specific, quantified advice.
+
+LISTING:
+- Title: ${l.title}
+- Brand: ${l.brand || "N/A"} | Size: ${l.size || "N/A"} | Condition: ${l.condition}
+- Primary platform: ${l.platform}
+- Listed price: $${l.listedPrice ?? "N/A"} | Cost: $${l.costPrice ?? 0}
+- Days listed: ${daysListed ?? "unknown"}
+- Description (first 300 chars): ${(l.description || "").slice(0, 300)}
+
+LIVE ENGAGEMENT (REAL DATA FROM SELLER DASHBOARDS):
+${engagementLines.length ? engagementLines.join("\n") : "No engagement data yet. Base advice on listing fundamentals."}
+
+MARKET COMPARABLES:
+${marketLines}
+
+BENCHMARKS (use these to interpret):
+- Good Depop like rate: >3% (likes/views). Below 1% = photos/title issue.
+- eBay watchers 10+ = strong demand, consider holding or bumping price.
+- 200+ views + 0 likes = photos are the problem.
+- 50+ views + no sale after 14 days = price too high.
+- <30 views after 7 days = bad SEO / buried listing.
+- Vinted <2% favorite rate with 100+ views = title needs keywords.
+
+Give 3-6 SPECIFIC, DATA-DRIVEN recommendations citing real numbers from the data above.
+Example good advice: "Your 245 Depop views with only 2 likes = 0.8% like rate (bad). Your photos are the issue — add flat lay + on-model shots."
+Example bad advice: "Improve your photos." (too vague)
+
+Respond with ONLY valid JSON (no markdown fences):
+{
+  "score": 7,
+  "scoreLabel": "Good Engagement | Needs Work | Poor | Excellent",
+  "performanceSummary": "2-sentence summary using real numbers",
+  "urgency": "high|medium|low",
+  "topAction": "The single most important thing to do NOW",
+  "priceRecommendation": { "current": 25, "suggested": 22, "reason": "based on eBay median of $23" },
+  "advice": [
+    { "priority": "high|medium|low", "type": "photos|price|title|description|seo|platform|timing|offers", "issue": "specific issue citing numbers", "action": "specific action", "timeToAct": "now|today|this_week" }
+  ]
+}`;
+
+      const message = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1500,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+      const parsed = safeParseJSON(text);
+      if (!parsed) return void res.status(500).json({ error: "AI parsing failed" });
+      res.json(parsed);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

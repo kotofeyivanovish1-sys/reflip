@@ -57,6 +57,13 @@ export const listings = sqliteTable("listings", {
   vintedPrice: real("vinted_price"),
   ebayPrice: real("ebay_price"),
   lastAutoSyncAt: text("last_auto_sync_at"),
+  depopViews: integer("depop_views"),
+  depopLikes: integer("depop_likes"),
+  vintedViews: integer("vinted_views"),
+  vintedFavorites: integer("vinted_favorites"),
+  ebayViews: integer("ebay_views"),
+  ebayWatchers: integer("ebay_watchers"),
+  lastEngagementSyncAt: text("last_engagement_sync_at"),
 });
 
 export const insertListingSchema = createInsertSchema(listings).omit({ id: true, createdAt: true });

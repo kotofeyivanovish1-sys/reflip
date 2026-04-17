@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, CheckCircle, Sparkles, ExternalLink, Copy, CheckCheck,
-  Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2, RefreshCw
+  Tag, Package, Pencil, QrCode, Download, MoreHorizontal, ImagePlus, Loader2, RefreshCw,
+  Eye, Heart, Users, BarChart2, TrendingUp, AlertTriangle
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -35,6 +36,14 @@ export default function Listings() {
   const [suggestId, setSuggestId] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<any>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [adviceId, setAdviceId] = useState<number | null>(null);
+  const [advice, setAdvice] = useState<any>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [manualStatsId, setManualStatsId] = useState<number | null>(null);
+  const [manualPlatform, setManualPlatform] = useState<"depop" | "vinted" | "ebay">("depop");
+  const [manualViews, setManualViews] = useState("");
+  const [manualLikes, setManualLikes] = useState("");
+  const [manualSubmitting, setManualSubmitting] = useState(false);
   const [crosslistListing, setCrosslistListing] = useState<Listing | null>(null);
   const [copiedPlat, setCopiedPlat] = useState<string | null>(null);
   const [qrData, setQrData] = useState<{ bagNumber: number; qrDataUrl: string; label: string } | null>(null);
@@ -203,6 +212,52 @@ export default function Listings() {
     } finally { setSuggestLoading(false); }
   };
 
+  const getAIAdvice = async (id: number) => {
+    setAdviceId(id);
+    setAdviceLoading(true);
+    setAdvice(null);
+    try {
+      const r = await apiRequest("POST", "/api/ai/listing-advice", { listingId: id });
+      setAdvice(await r.json());
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Could not get AI advice", variant: "destructive" });
+    } finally { setAdviceLoading(false); }
+  };
+
+  const openManualStats = (id: number) => {
+    const l = listings.find((x: any) => x.id === id) as any;
+    const defaultPlat: "depop" | "vinted" | "ebay" =
+      l?.depopUrl ? "depop" : l?.vintedUrl ? "vinted" : l?.ebayUrl ? "ebay" : (l?.platform || "depop");
+    setManualStatsId(id);
+    setManualPlatform(defaultPlat);
+    setManualViews("");
+    setManualLikes("");
+  };
+
+  const submitManualStats = async () => {
+    if (!manualStatsId) return;
+    const body: any = { platform: manualPlatform };
+    if (manualViews.trim()) body.views = Number(manualViews);
+    if (manualLikes.trim()) {
+      if (manualPlatform === "depop") body.likes = Number(manualLikes);
+      else if (manualPlatform === "vinted") body.favorites = Number(manualLikes);
+      else body.watchers = Number(manualLikes);
+    }
+    if (!body.views && !body.likes && !body.favorites && !body.watchers) {
+      toast({ title: "Enter at least one number", variant: "destructive" });
+      return;
+    }
+    setManualSubmitting(true);
+    try {
+      await apiRequest("POST", `/api/listings/${manualStatsId}/engagement`, body);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      toast({ title: "Stats saved", description: "AI can now use these numbers." });
+      setManualStatsId(null);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Save failed", variant: "destructive" });
+    } finally { setManualSubmitting(false); }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex items-center justify-between gap-2 px-3 sm:px-5 md:px-6 py-3 sm:py-4 border-b border-border sticky top-0 bg-background/95 backdrop-blur z-10">
@@ -305,6 +360,8 @@ export default function Listings() {
                 onEdit={() => navigate(`/listings/${listing.id}/edit`)}
                 onDelete={() => deleteMutation.mutate(listing.id)}
                 onAI={() => getAISuggestions(listing.id)}
+                onAdvice={() => getAIAdvice(listing.id)}
+                onManualStats={() => openManualStats(listing.id)}
                 onExport={() => setCrosslistListing(listing)}
                 onQR={() => openQR((listing as any).bagNumber)}
                 onFetchPhotos={() => { setPhotoFetchId(listing.id); setFetchUrl(""); }}
@@ -493,6 +550,136 @@ export default function Listings() {
         </DialogContent>
       </Dialog>
 
+      {/* ── AI LISTING ADVICE DIALOG (uses live engagement stats) ── */}
+      <Dialog open={adviceId !== null} onOpenChange={() => { setAdviceId(null); setAdvice(null); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart2 size={16} className="text-primary" /> AI Advice
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wider">Live stats</span>
+            </DialogTitle>
+          </DialogHeader>
+          {adviceLoading ? (
+            <div className="space-y-3 py-2">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 skeleton" />)}
+              <p className="text-xs text-muted-foreground text-center">Analyzing real performance data…</p>
+            </div>
+          ) : advice ? (
+            <div className="space-y-3">
+              {/* Score + summary */}
+              <div className="bg-muted/40 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Performance</span>
+                  <div className="flex items-center gap-2">
+                    {typeof advice.score === "number" && (
+                      <span className="text-2xl font-bold font-mono">{advice.score}<span className="text-sm text-muted-foreground">/10</span></span>
+                    )}
+                    {advice.scoreLabel && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{advice.scoreLabel}</span>
+                    )}
+                  </div>
+                </div>
+                {advice.performanceSummary && (
+                  <p className="text-xs text-foreground/80 leading-relaxed">{advice.performanceSummary}</p>
+                )}
+              </div>
+
+              {/* Top action */}
+              {advice.topAction && (
+                <div className="rounded-xl p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-300/50">
+                  <div className="flex items-start gap-2">
+                    <TrendingUp size={14} className="text-amber-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-0.5">Do this now</p>
+                      <p className="text-xs font-medium">{advice.topAction}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Price recommendation */}
+              {advice.priceRecommendation && (
+                <div className="rounded-xl p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-300/40">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-1">Price recommendation</p>
+                  <p className="text-sm font-mono">
+                    ${advice.priceRecommendation.current} → <span className="font-bold">${advice.priceRecommendation.suggested}</span>
+                  </p>
+                  {advice.priceRecommendation.reason && (
+                    <p className="text-[11px] text-muted-foreground mt-1">{advice.priceRecommendation.reason}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Advice list */}
+              {(advice.advice || []).map((a: any, i: number) => {
+                const priorityColor =
+                  a.priority === "high" ? "border-red-400/60 bg-red-50/60 dark:bg-red-900/10"
+                    : a.priority === "medium" ? "border-amber-400/50 bg-amber-50/40 dark:bg-amber-900/10"
+                      : "border-border/50 bg-muted/30";
+                return (
+                  <div key={i} className={`rounded-xl p-3 border ${priorityColor}`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      {a.priority === "high" && <AlertTriangle size={12} className="text-red-500" />}
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-background/60">{a.type}</span>
+                      <span className="text-[9px] font-bold uppercase text-muted-foreground">{a.priority}</span>
+                      {a.timeToAct && <span className="text-[9px] text-muted-foreground ml-auto">{a.timeToAct.replace("_", " ")}</span>}
+                    </div>
+                    {a.issue && <p className="text-xs text-muted-foreground mb-1">{a.issue}</p>}
+                    {a.action && <p className="text-xs font-medium">{a.action}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setAdviceId(null); setAdvice(null); }}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── MANUAL STATS ENTRY DIALOG ── */}
+      <Dialog open={manualStatsId !== null} onOpenChange={() => setManualStatsId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye size={15} className="text-primary" /> Enter listing stats
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Check your seller dashboard on the platform and type in the numbers. The AI will use them to give better advice.
+            </p>
+            {/* Platform toggle */}
+            <div className="flex gap-1 bg-muted rounded-lg p-1">
+              {(["depop", "vinted", "ebay"] as const).map(p => (
+                <button key={p} onClick={() => setManualPlatform(p)}
+                  className={`flex-1 text-xs py-1.5 rounded-md font-semibold capitalize transition-all ${manualPlatform === p ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <div>
+                <Label className="text-xs">Views</Label>
+                <Input type="number" inputMode="numeric" value={manualViews} onChange={e => setManualViews(e.target.value)} placeholder="e.g. 245" className="rounded-lg font-mono h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">
+                  {manualPlatform === "depop" ? "Likes" : manualPlatform === "vinted" ? "Favorites" : "Watchers"}
+                </Label>
+                <Input type="number" inputMode="numeric" value={manualLikes} onChange={e => setManualLikes(e.target.value)} placeholder="e.g. 3" className="rounded-lg font-mono h-9 text-sm" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setManualStatsId(null)}>Cancel</Button>
+            <Button size="sm" onClick={submitManualStats} disabled={manualSubmitting} className="gap-1.5">
+              {manualSubmitting ? <><Loader2 size={12} className="animate-spin" /> Saving...</> : <>Save stats</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── ADD PHOTOS DIALOG ── */}
       <Dialog open={photoFetchId !== null} onOpenChange={() => { setPhotoFetchId(null); setFetchUrl(""); }}>
         <DialogContent className="max-w-sm">
@@ -569,6 +756,41 @@ export default function Listings() {
   );
 }
 
+// ── Engagement metric badges (shown inline on each listing row) ──
+function EngagementBadges({ listing }: { listing: Listing }) {
+  const l: any = listing;
+  const hasAny =
+    l.depopViews != null || l.depopLikes != null ||
+    l.vintedViews != null || l.vintedFavorites != null ||
+    l.ebayViews != null || l.ebayWatchers != null;
+  if (!hasAny) return null;
+
+  const badge = (color: string, children: React.ReactNode) => (
+    <span className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-mono px-1.5 py-0.5 rounded-md bg-muted/60 border border-border/40" style={{ color }}>
+      {children}
+    </span>
+  );
+  return (
+    <>
+      {(l.depopViews != null || l.depopLikes != null) && badge(PLATFORM_DOT.depop,
+        <>
+          {l.depopViews != null && (<><Eye size={10} /> {l.depopViews}</>)}
+          {l.depopLikes != null && (<> <Heart size={10} className="ml-0.5" /> {l.depopLikes}</>)}
+        </>)}
+      {(l.vintedViews != null || l.vintedFavorites != null) && badge(PLATFORM_DOT.vinted,
+        <>
+          {l.vintedViews != null && (<><Eye size={10} /> {l.vintedViews}</>)}
+          {l.vintedFavorites != null && (<> <Heart size={10} className="ml-0.5" /> {l.vintedFavorites}</>)}
+        </>)}
+      {(l.ebayViews != null || l.ebayWatchers != null) && badge(PLATFORM_DOT.ebay,
+        <>
+          {l.ebayViews != null && (<><Eye size={10} /> {l.ebayViews}</>)}
+          {l.ebayWatchers != null && (<> <Users size={10} className="ml-0.5" /> {l.ebayWatchers}</>)}
+        </>)}
+    </>
+  );
+}
+
 // Helper: parse imageUrl field — supports JSON array or single URL
 function getListingImages(listing: Listing): string[] {
   if (!listing.imageUrl) return [];
@@ -587,12 +809,14 @@ interface RowProps {
   onEdit: () => void;
   onDelete: () => void;
   onAI: () => void;
+  onAdvice: () => void;
+  onManualStats: () => void;
   onExport: () => void;
   onQR: () => void;
   onFetchPhotos: () => void;
 }
 
-function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onExport, onQR, onFetchPhotos }: RowProps) {
+function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, onAdvice, onManualStats, onExport, onQR, onFetchPhotos }: RowProps) {
   const status = listing.status;
   const bagNum = (listing as any).bagNumber;
   const images = getListingImages(listing);
@@ -645,6 +869,9 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
                 +${(listing.soldPrice - listing.costPrice).toFixed(0)} NET
               </span>
             )}
+
+            {/* LIVE ENGAGEMENT METRICS (from extension or manual entry) */}
+            <EngagementBadges listing={listing} />
 
             {/* PLATFORM LINKS PREVIEW */}
             <div className="flex gap-1 ml-auto shrink-0">
@@ -705,6 +932,16 @@ function ListingRow({ listing, onMarkSold, onActivate, onEdit, onDelete, onAI, o
               {status === "active" && (
                 <DropdownMenuItem onClick={onAI} className="gap-2 text-xs">
                   <Sparkles size={12} /> AI suggestions
+                </DropdownMenuItem>
+              )}
+              {status === "active" && (
+                <DropdownMenuItem onClick={onAdvice} className="gap-2 text-xs">
+                  <BarChart2 size={12} /> AI advice (with live stats)
+                </DropdownMenuItem>
+              )}
+              {status === "active" && (
+                <DropdownMenuItem onClick={onManualStats} className="gap-2 text-xs">
+                  <Eye size={12} /> Enter stats manually
                 </DropdownMenuItem>
               )}
               {(status === "active" || status === "pending") && (

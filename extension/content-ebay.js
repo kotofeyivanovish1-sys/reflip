@@ -167,10 +167,19 @@ function scrapeEbayItemPage() {
       if (src && !images.includes(src) && !src.includes(".gif")) images.push(src);
     });
 
+    // Watchers / views — only visible to logged-in seller on their own items
+    const bodyText = document.body?.innerText || "";
+    const watchMatch = bodyText.match(/(\d+)\s*(?:people\s*)?watch(?:ing|er)s?/i);
+    const viewsMatch = bodyText.match(/(\d+)\s*views?\s*in\s*the\s*last/i);
+    const watchers = watchMatch ? parseInt(watchMatch[1], 10) : null;
+    const views = viewsMatch ? parseInt(viewsMatch[1], 10) : null;
+
     return {
       title, description: desc, price, brand, size: null, condition,
       status: "active", images,
       url: window.location.href.split("?")?.[0],
+      watchers,
+      views,
     };
   } catch { return null; }
 }

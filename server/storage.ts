@@ -88,6 +88,13 @@ try { sqlite.exec(`ALTER TABLE listings ADD COLUMN depop_price REAL`); } catch {
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN vinted_price REAL`); } catch {}
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN ebay_price REAL`); } catch {}
 try { sqlite.exec(`ALTER TABLE listings ADD COLUMN last_auto_sync_at TEXT`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN depop_views INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN depop_likes INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN vinted_views INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN vinted_favorites INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN ebay_views INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN ebay_watchers INTEGER`); } catch {}
+try { sqlite.exec(`ALTER TABLE listings ADD COLUMN last_engagement_sync_at TEXT`); } catch {}
 
 // saved_deals table for Deal Finder
 sqlite.exec(`
@@ -156,6 +163,13 @@ function mapRow(row: any): Listing {
     vintedPrice: row.vinted_price ?? row.vintedPrice ?? null,
     ebayPrice: row.ebay_price ?? row.ebayPrice ?? null,
     lastAutoSyncAt: row.last_auto_sync_at ?? row.lastAutoSyncAt ?? null,
+    depopViews: row.depop_views ?? row.depopViews ?? null,
+    depopLikes: row.depop_likes ?? row.depopLikes ?? null,
+    vintedViews: row.vinted_views ?? row.vintedViews ?? null,
+    vintedFavorites: row.vinted_favorites ?? row.vintedFavorites ?? null,
+    ebayViews: row.ebay_views ?? row.ebayViews ?? null,
+    ebayWatchers: row.ebay_watchers ?? row.ebayWatchers ?? null,
+    lastEngagementSyncAt: row.last_engagement_sync_at ?? row.lastEngagementSyncAt ?? null,
   } as Listing;
 }
 
@@ -172,6 +186,7 @@ export interface IStorage {
   // Listings
   getListings(userId: number, status?: string, platform?: string): Listing[];
   getListing(id: number, userId: number): Listing | undefined;
+  getListingByUrl(userId: number, url: string): Listing | undefined;
   createListing(data: InsertListing, userId: number): Listing;
   updateListing(id: number, data: Partial<InsertListing>, userId: number): Listing | undefined;
   deleteListing(id: number, userId: number): void;
@@ -260,6 +275,19 @@ class SQLiteStorage implements IStorage {
     return raw ? mapRow(raw) : undefined;
   }
 
+  getListingByUrl(userId: number, url: string): Listing | undefined {
+    const normalized = (url || "").split("?")[0].replace(/\/$/, "");
+    if (!normalized) return undefined;
+    const raw = sqlite.prepare(`
+      SELECT * FROM listings
+      WHERE user_id = ?
+        AND (depop_url = ? OR vinted_url = ? OR ebay_url = ?
+          OR depop_url = ? OR vinted_url = ? OR ebay_url = ?)
+      LIMIT 1
+    `).get(userId, normalized, normalized, normalized, normalized + "/", normalized + "/", normalized + "/") as any;
+    return raw ? mapRow(raw) : undefined;
+  }
+
   createListing(data: InsertListing, userId: number): Listing {
     const now = new Date().toISOString().split("T")[0];
     const bagNumber = this.getNextBagNumber(userId);
@@ -299,6 +327,10 @@ class SQLiteStorage implements IStorage {
       depopUrl: "depop_url", vintedUrl: "vinted_url", ebayUrl: "ebay_url",
       depopPrice: "depop_price", vintedPrice: "vinted_price", ebayPrice: "ebay_price",
       lastAutoSyncAt: "last_auto_sync_at",
+      depopViews: "depop_views", depopLikes: "depop_likes",
+      vintedViews: "vinted_views", vintedFavorites: "vinted_favorites",
+      ebayViews: "ebay_views", ebayWatchers: "ebay_watchers",
+      lastEngagementSyncAt: "last_engagement_sync_at",
     };
     const setClauses = fields.map(f => `${colMap[f] || f} = ?`).join(", ");
     const values = fields.map(f => (data as any)[f]);

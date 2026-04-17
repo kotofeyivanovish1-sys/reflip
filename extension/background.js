@@ -65,7 +65,7 @@ async function runBackgroundSync(trigger = "auto") {
     for (const listing of listings) {
       checked++;
       try {
-        const updates = await buildLiveUpdates(listing);
+        const { updates, engagement } = await buildLiveUpdates(listing);
         if (Object.keys(updates).length > 0) {
           const patch = await fetch(`${serverUrl}/api/listings/${listing.id}`, {
             method: "PATCH",
@@ -78,6 +78,22 @@ async function runBackgroundSync(trigger = "auto") {
           if (patch.ok) {
             updated++;
             console.log(`[ReFlip] Updated #${listing.id} (${listing.title?.slice(0, 30)}): ${Object.keys(updates).join(", ")}`);
+          }
+        }
+        // Push engagement data (views/likes/favorites/watchers) per platform
+        for (const e of engagement) {
+          try {
+            await fetch(`${serverUrl}/api/listings/${listing.id}/engagement`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(e),
+            });
+            console.log(`[ReFlip] Engagement #${listing.id} ${e.platform}: views=${e.views} likes/favs/watchers=${e.likes ?? e.favorites ?? e.watchers}`);
+          } catch (err) {
+            console.warn(`[ReFlip] Engagement push failed:`, err.message);
           }
         }
       } catch (e) {
@@ -109,44 +125,57 @@ async function runBackgroundSync(trigger = "auto") {
 }
 
 // ─── Build updates for a single listing by fetching live platform data ───
+// Returns { updates: {...}, engagement: [{platform, views, likes|favorites|watchers, currentPrice}, ...] }
 async function buildLiveUpdates(listing) {
   const updates = {};
+  const engagement = [];
 
-  // Try each linked platform — use whichever succeeds first for price/description
-  // (prefer the primary platform the listing was created on)
   const platforms = [];
   if (listing.depopUrl) platforms.push({ name: "depop", url: listing.depopUrl, fn: fetchDepopLive });
   if (listing.vintedUrl) platforms.push({ name: "vinted", url: listing.vintedUrl, fn: fetchVintedLive });
   if (listing.ebayUrl) platforms.push({ name: "ebay", url: listing.ebayUrl, fn: fetchEbayLive });
 
-  // Sort so the primary platform goes first
   const primary = listing.platform || "depop";
   platforms.sort((a, b) => (a.name === primary ? -1 : b.name === primary ? 1 : 0));
+
+  let descSet = false, priceSet = false, soldSet = false;
 
   for (const { name, url, fn } of platforms) {
     try {
       const live = await fn(url);
       if (!live) continue;
 
-      // Always update price if changed
-      if (live.price > 0 && live.price !== listing.listedPrice) {
+      // Price/description/status: take first successful read (primary platform wins)
+      if (!priceSet && live.price > 0 && live.price !== listing.listedPrice) {
         updates.listedPrice = live.price;
+        priceSet = true;
       }
-      // Always update description from live (source of truth)
-      if (live.description && live.description.length > 10) {
+      if (!descSet && live.description && live.description.length > 10) {
         updates.description = live.description;
+        descSet = true;
       }
-      // Mark as sold if platform says so
-      if (live.status === "sold" && listing.status === "active") {
+      if (!soldSet && live.status === "sold" && listing.status === "active") {
         updates.status = "sold";
+        soldSet = true;
       }
-      break; // Got valid data from this platform, no need to check others
+
+      // Engagement: ALWAYS push per-platform (separate storage columns)
+      const hasEngagement = live.views != null || live.likes != null || live.favorites != null || live.watchers != null;
+      if (hasEngagement) {
+        const e = { platform: name };
+        if (live.views != null) e.views = live.views;
+        if (name === "depop" && live.likes != null) e.likes = live.likes;
+        if (name === "vinted" && live.favorites != null) e.favorites = live.favorites;
+        if (name === "ebay" && live.watchers != null) e.watchers = live.watchers;
+        if (live.price > 0) e.currentPrice = live.price;
+        engagement.push(e);
+      }
     } catch (e) {
       console.warn(`[ReFlip] ${name} fetch failed for listing ${listing.id}:`, e.message);
     }
   }
 
-  return updates;
+  return { updates, engagement };
 }
 
 // ─── Depop live fetch (uses browser cookies via chrome.cookies API) ───
@@ -178,10 +207,15 @@ async function fetchDepopLive(url) {
   if (!res.ok) return null;
 
   const p = await res.json();
+  // Engagement fields — try every known key; Depop has shifted these between API versions
+  const likes = firstNumber(p.likes_count, p.likesCount, p.num_likes, p.numLikes, p.favorites_count, p.favouritesCount);
+  const views = firstNumber(p.views_count, p.viewsCount, p.num_views, p.numViews, p.view_count, p.impressions);
   return {
     price: parseFloat(p.price?.priceAmount || p.preview_price_data?.priceAmount || p.price_amount || "0"),
     description: p.description || "",
     status: p.sold || p.status === 0 ? "sold" : "active",
+    likes,
+    views,
   };
 }
 
@@ -211,10 +245,15 @@ async function fetchVintedLive(url) {
   const item = data.item || data;
   if (!item.id) return null;
 
+  const favorites = firstNumber(item.favourite_count, item.favouritesCount, item.favorites_count, item.favoritesCount, item.num_favourites, item.likes_count);
+  const views = firstNumber(item.view_count, item.viewCount, item.views_count, item.views, item.view_count_total);
+
   return {
     price: parseFloat(item.price?.amount || item.total_item_price?.amount || item.price || "0"),
     description: item.description || "",
     status: item.is_closed || item.is_hidden ? "sold" : "active",
+    favorites,
+    views,
   };
 }
 
@@ -240,7 +279,28 @@ async function fetchEbayLive(url) {
 
   const isSold = /listing ended|item sold|no longer available|bidding has ended/i.test(html);
 
-  return { price, status: isSold ? "sold" : "active" };
+  // Watchers — eBay shows "X watchers" or "X watching" on seller-accessible item pages
+  const watchersMatch = html.match(/(\d+)\s*(?:people\s*)?watch(?:ing|er)s?/i)
+    || html.match(/"watchCount"\s*:\s*(\d+)/)
+    || html.match(/data-testid="[^"]*watch[^"]*"[^>]*>[^<]*?(\d+)/i);
+  const watchers = watchersMatch ? parseInt(watchersMatch[1], 10) : null;
+
+  // Views — sometimes present in item metadata
+  const viewsMatch = html.match(/(\d+)\s*views?\s*in\s*the\s*last\s*24\s*hours/i)
+    || html.match(/"viewItemCount"\s*:\s*(\d+)/);
+  const views = viewsMatch ? parseInt(viewsMatch[1], 10) : null;
+
+  return { price, status: isSold ? "sold" : "active", watchers, views };
+}
+
+// Pick the first finite numeric argument, else null
+function firstNumber(...candidates) {
+  for (const c of candidates) {
+    if (c == null) continue;
+    const n = typeof c === "number" ? c : parseInt(String(c), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 // ─── Helpers ───

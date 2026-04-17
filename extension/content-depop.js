@@ -101,6 +101,8 @@ async function fetchUserListingsViaApi(username) {
         const hiResImages = images.map(upgradeDepopImageUrl);
 
         const slug = p.slug || p.id || "";
+        const likes = pickNum(p.likes_count, p.likesCount, p.num_likes, p.numLikes, p.favorites_count);
+        const views = pickNum(p.views_count, p.viewsCount, p.num_views, p.view_count, p.impressions);
         listings.push({
           title: p.description?.split("\n")[0]?.slice(0, 120) || slug,
           description: p.description || "",
@@ -111,6 +113,8 @@ async function fetchUserListingsViaApi(username) {
           status: p.status === 0 || p.sold ? "sold" : "active",
           images: hiResImages,
           url: `https://www.depop.com/products/${slug}/`,
+          likes,
+          views,
         });
       }
 
@@ -123,6 +127,16 @@ async function fetchUserListingsViaApi(username) {
     console.error("[ReFlip] API fetch failed:", e);
   }
   return listings;
+}
+
+// Pick the first finite numeric candidate (skips undefined/null/NaN)
+function pickNum(...xs) {
+  for (const x of xs) {
+    if (x == null) continue;
+    const n = typeof x === "number" ? x : parseInt(String(x), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 // Upgrade Depop CDN URLs to full resolution
@@ -169,6 +183,8 @@ async function fetchProductData(productUrl) {
       status: p.sold ? "sold" : "active",
       images: images.map(upgradeDepopImageUrl),
       url: productUrl,
+      likes: pickNum(p.likes_count, p.likesCount, p.num_likes, p.numLikes),
+      views: pickNum(p.views_count, p.viewsCount, p.num_views, p.view_count),
     };
   } catch {
     return null;
