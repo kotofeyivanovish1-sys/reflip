@@ -5,9 +5,13 @@ import * as schema from "../shared/schema";
 import { listings, scanResults, platformStats, users, bags, savedDeals } from "../shared/schema";
 import type { InsertListing, Listing, InsertScanResult, ScanResult, InsertPlatformStat, PlatformStat, User, Bag, InsertSavedDeal, SavedDeal } from "../shared/schema";
 import bcrypt from "bcryptjs";
+import { mkdirSync } from "fs";
+import { dirname } from "path";
 
 // Use DB_PATH env var for Railway Volume, fallback for local dev
 const dbPath = process.env.DB_PATH || "reflip.db";
+const dbDir = dirname(dbPath);
+if (dbDir !== ".") mkdirSync(dbDir, { recursive: true });
 const sqlite = new Database(dbPath);
 const db = drizzle(sqlite, { schema });
 
