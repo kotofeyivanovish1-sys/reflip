@@ -57,6 +57,12 @@ export default function Analytics() {
   }));
 
   const isLoading = loadingPlatforms || loadingStats;
+  const engagementTotals = platforms.reduce((acc: any, platform: any) => {
+    acc.views += platform.totalViews ?? 0;
+    acc.interest += platform.totalInterest ?? 0;
+    acc.stale += platform.staleChannelCount ?? 0;
+    return acc;
+  }, { views: 0, interest: 0, stale: 0 });
 
   // Listing suggestions based on data
   const suggestions = [];
@@ -79,7 +85,30 @@ export default function Analytics() {
       </header>
 
       <main className="flex-1 overflow-y-auto px-3 sm:px-5 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
-        {/* Platform cards */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Live Engagement Rollup</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-20 skeleton" /> : (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-muted/40 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Views</p>
+                  <p className="text-2xl font-mono font-bold">{engagementTotals.views}</p>
+                </div>
+                <div className="rounded-xl bg-muted/40 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Interest</p>
+                  <p className="text-2xl font-mono font-bold">{engagementTotals.interest}</p>
+                </div>
+                <div className="rounded-xl bg-muted/40 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Stale channels</p>
+                  <p className="text-2xl font-mono font-bold">{engagementTotals.stale}</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {isLoading ? (
             Array.from({length: 2}).map((_, i) => (
@@ -107,6 +136,20 @@ export default function Analytics() {
                       <p className="text-xs text-muted-foreground">Margin</p>
                     </div>
                   </div>
+                  <div className="grid grid-cols-3 gap-2 text-center mt-3 pt-3 border-t border-border">
+                    <div>
+                      <p className="text-sm font-bold font-mono">{p.totalViews ?? 0}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Views</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold font-mono">{p.totalInterest ?? 0}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Interest</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold font-mono">{p.staleChannelCount ?? 0}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Stale</p>
+                    </div>
+                  </div>
                   {p.topCategories?.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border">
                       <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider mb-1.5">Top categories</p>
@@ -124,7 +167,6 @@ export default function Analytics() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Bar chart: Revenue vs Profit */}
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Revenue vs Profit by Platform</CardTitle></CardHeader>
             <CardContent>
@@ -136,10 +178,10 @@ export default function Analytics() {
                     <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
                     <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
                     <Bar dataKey="revenue" name="Revenue $" radius={[4, 4, 0, 0]}>
-                      {profitData.map((p) => <Cell key={p.name} fill={PLATFORM_COLORS[p.platform] || "#888"} opacity={0.6} />)}
+                      {profitData.map((p: any) => <Cell key={p.name} fill={PLATFORM_COLORS[p.platform] || "#888"} opacity={0.6} />)}
                     </Bar>
                     <Bar dataKey="profit" name="Profit $" radius={[4, 4, 0, 0]}>
-                      {profitData.map((p) => <Cell key={p.name} fill={PLATFORM_COLORS[p.platform] || "#888"} />)}
+                      {profitData.map((p: any) => <Cell key={p.name} fill={PLATFORM_COLORS[p.platform] || "#888"} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -147,7 +189,6 @@ export default function Analytics() {
             </CardContent>
           </Card>
 
-          {/* Pie: sales distribution */}
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Sales Distribution</CardTitle></CardHeader>
             <CardContent>
@@ -170,7 +211,6 @@ export default function Analytics() {
           </Card>
         </div>
 
-        {/* Monthly trend */}
         {stats?.monthlySales && (
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Monthly Sales Trend</CardTitle></CardHeader>
@@ -188,7 +228,6 @@ export default function Analytics() {
           </Card>
         )}
 
-        {/* AI Recommendations */}
         {suggestions.length > 0 && (
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Recommendations</CardTitle></CardHeader>
