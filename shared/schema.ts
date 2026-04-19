@@ -48,6 +48,7 @@ export const listings = sqliteTable("listings", {
   aiTexts: text("ai_texts"),
   priceSuggestions: text("price_suggestions"),
   scanData: text("scan_data"),
+  channelsJson: text("channels_json"),
   notes: text("notes"),
   bagNumber: integer("bag_number"),
   depopUrl: text("depop_url"),
